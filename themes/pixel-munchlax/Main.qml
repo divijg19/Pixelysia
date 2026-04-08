@@ -1,0 +1,141 @@
+import QtQuick
+import QtQuick.Window
+import Qt5Compat.GraphicalEffects
+import Qt.labs.folderlistmodel
+import SddmComponents 2.0
+
+// Munchax Layout
+Rectangle {
+    readonly property real s: Screen.height / 768
+    id: root; width: Screen.width; height: Screen.height; color: "#25787d"
+    property int userIndex: userModel.lastIndex >= 0 ? userModel.lastIndex : 0
+    property real ui: 0
+
+    // Theme Colors
+    readonly property color mTeal: "#50dfd4"
+    readonly property color mCream: "#fcf8eb"
+    readonly property color mOrange: "#f4a261"
+
+    FolderListModel { id: fontFolder; folder: Qt.resolvedUrl("font"); nameFilters: ["*.ttf", "*.otf"] }
+    
+    ListView { id: userHelper; model: userModel; currentIndex: root.userIndex; opacity: 0; width: 100; height: 100; z: -100; delegate: Item { property string uName: model.realName || model.name || ""; property string uLogin: model.name || "" } }
+    
+    // Auto-focus fix for Quickshell (Loader does not propagate focus: true)
+    Timer { interval: 300; running: true; onTriggered: pwd.forceActiveFocus() }
+
+    Component.onCompleted: fadeAnim.start()
+    NumberAnimation { id: fadeAnim; target: root; property: "ui"; from: 0; to: 1; duration: 600; easing.type: Easing.OutSine }
+
+    Loader { anchors.fill: parent; source: "BackgroundVideo.qml" }
+
+    // Bottom Overlay
+    Rectangle {
+        anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.right: parent.right
+        height: 360 * s; opacity: root.ui
+        gradient: Gradient { GradientStop { position: 0.0; color: "transparent" } GradientStop { position: 1.0; color: "#d0000000" } }
+    }
+
+    // Clock View
+    Column {
+        anchors.top: parent.top; anchors.right: parent.right; anchors.margins: 60 * s
+        spacing: 4 * s; opacity: root.ui
+        
+        Item {
+            anchors.right: parent.right
+            width: cd.implicitWidth; height: cd.implicitHeight
+            Text { text: cd.text; color: "#80000000"; font: cd.font; x: 2*s; y: 2*s }
+            Text {
+                id: cd
+                text: Qt.formatDate(new Date(), "dddd, MMMM d").toUpperCase()
+                color: root.mTeal; font.family: "Pixelify Sans"; font.pixelSize: 18 * s; font.letterSpacing: 6 * s; font.weight: Font.Bold
+            }
+        }
+
+        Item {
+            anchors.right: parent.right
+            width: ct.implicitWidth; height: ct.implicitHeight
+            Text { text: ct.text; color: "#80000000"; font: ct.font; x: 3*s; y: 3*s }
+            Text {
+                id: ct
+                text: Qt.formatTime(new Date(), "HH:mm")
+                color: root.mCream; font.family: "Pixelify Sans"; font.pixelSize: 96 * s; font.weight: Font.Bold
+                Timer { interval: 1000; running: true; repeat: true; onTriggered: ct.text = Qt.formatTime(new Date(), "HH:mm") }
+            }
+        }
+    }
+
+    // Login View
+    Item {
+        anchors.bottom: parent.bottom; anchors.left: parent.left; anchors.margins: 60 * s
+        width: 300 * s; height: 160 * s; opacity: root.ui
+        
+        Column {
+            anchors.bottom: parent.bottom; anchors.left: parent.left; spacing: 20 * s; width: 280 * s
+
+            Item {
+                anchors.left: parent.left
+                width: un.implicitWidth; height: un.implicitHeight
+                Text { text: un.text; color: "#80000000"; font: un.font; x: 2*s; y: 2*s }
+                Text {
+                    id: un
+                    text: (userModel.lastUser || "kamikuma").toUpperCase()
+                    color: root.mCream; font.family: "Pixelify Sans"; font.pixelSize: 22 * s; font.letterSpacing: 4 * s; font.weight: Font.Bold
+                }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if (userModel && userModel.rowCount() > 0) root.userIndex = (root.userIndex + 1) % userModel.rowCount() } }
+            }
+            
+            Item {
+                width: parent.width; height: 36 * s
+                Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; width: parent.width; height: 1 * s; color: root.mTeal; opacity: pwd.activeFocus ? 1.0 : 0.3; Behavior on opacity { NumberAnimation {duration: 300} } }
+                Rectangle { anchors.bottom: parent.bottom; anchors.left: parent.left; width: pwd.activeFocus ? parent.width : 0; height: 2 * s; color: root.mOrange; Behavior on width { NumberAnimation {duration: 300; easing.type: Easing.OutExpo} }
+                    layer.enabled: true; layer.effect: Glow { color: root.mOrange; radius: 6; spread: 0.4 }
+                }
+                TextInput {
+                    id: pwd; anchors.fill: parent; color: root.mCream; font.family: "Pixelify Sans"; font.pixelSize: 18 * s; font.letterSpacing: 4 * s; font.weight: Font.Bold
+                    echoMode: TextInput.Password; passwordCharacter: "─"; focus: true; clip: true; horizontalAlignment: TextInput.AlignLeft; verticalAlignment: TextInput.AlignVCenter
+                    Keys.onReturnPressed: doLogin(); Keys.onEnterPressed: doLogin()
+                }
+                Text { anchors.verticalCenter: parent.verticalCenter; anchors.left: parent.left; text: "password"; color: root.mTeal; opacity: 0.4; font.family: "Pixelify Sans"; font.pixelSize: 14 * s; font.letterSpacing: 4 * s; visible: !pwd.text && !pwd.activeFocus; font.weight: Font.Bold }
+            }
+
+            Item {
+                anchors.left: parent.left; width: 140 * s; height: 36 * s
+                Rectangle { anchors.fill: parent; color: sbm.containsMouse ? root.mTeal : "transparent"; border.color: root.mTeal; border.width: 1; radius: 4 * s; Behavior on color { ColorAnimation { duration: 150 } } }
+                Text {
+                    anchors.centerIn: parent
+                    text: "LOGIN"
+                    color: sbm.containsMouse ? "#000" : root.mCream
+                    font.family: "Pixelify Sans"
+                    font.pixelSize: 12 * s
+                    font.letterSpacing: 4 * s
+                    font.weight: Font.Bold
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                }
+                MouseArea { id: sbm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: doLogin() }
+            }
+
+            Text { id: err; text: ""; color: "#ff4444"; anchors.left: parent.left; font.family: "Pixelify Sans"; font.pixelSize: 12 * s; font.weight: Font.Bold }
+        }
+    }
+
+    // Power Box
+    Row {
+        anchors.bottom: parent.bottom; anchors.right: parent.right; anchors.margins: 40 * s; spacing: 20 * s; opacity: root.ui
+        Repeater {
+            model: [{l: "RESTART", a: 0}, {l: "SHUT DOWN", a: 1}]
+            delegate: Item {
+                width: pmt.implicitWidth + 24 * s; height: 28 * s
+                Rectangle { anchors.fill: parent; color: "transparent"; border.color: root.mTeal; border.width: 1 * s; opacity: pm.containsMouse ? 1.0 : 0.4; radius: 4 * s; Behavior on opacity { NumberAnimation { duration: 150 } } Rectangle { anchors.fill: parent; anchors.margins: 1 * s; color: modelData.a === 2 ? root.mOrange : root.mTeal; radius: 3 * s; opacity: pm.containsMouse ? 0.3 : 0; Behavior on opacity { NumberAnimation { duration: 150 } } } }
+                Text { id: pmt; anchors.centerIn: parent; text: modelData.l; color: root.mCream; font.family: "Pixelify Sans"; font.pixelSize: 10 * s; font.letterSpacing: 2 * s; font.weight: Font.Bold }
+                MouseArea { id: pm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { if (modelData.a === 0) sddm.reboot(); else if (modelData.a === 1) sddm.powerOff(); } }
+            }
+        }
+    }
+
+    Connections {
+        target: sddm
+        function onLoginFailed() { err.text = "DECLINED"; pwd.text = ""; pwd.focus = true }
+    }
+    
+    function doLogin() { var u = (userHelper.currentItem && userHelper.currentItem.uLogin) ? userHelper.currentItem.uLogin : userModel.lastUser; sddm.login(u, pwd.text, 0) }
+}
