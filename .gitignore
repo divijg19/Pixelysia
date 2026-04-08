@@ -1,2 +1,3 @@
-.git/
 pixelysia
+!cmd/pixelysia/
+!internal/pixelysia/

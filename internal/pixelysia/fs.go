@@ -15,6 +15,12 @@ import (
 	"time"
 )
 
+var (
+	requiredUID   = 0
+	requiredGID   = 0
+	commandRunner = exec.Command
+)
+
 func copyFile(src string, dst string, mode os.FileMode) error {
 	if err := ensureRegularFile(src); err != nil {
 		return fmt.Errorf("validate source file %s: %w", src, err)
@@ -110,7 +116,7 @@ func setOwnershipAndModeRecursive(root string, uid int, gid int, fileMode os.Fil
 		}
 
 		if err := os.Chown(path, uid, gid); err != nil {
-			return fmt.Errorf("set ownership on %s: %w", path, err)
+			return fmt.Errorf("set ownership on %s failed; rerun with sudo: %w", path, err)
 		}
 
 		mode := fileMode
@@ -145,7 +151,7 @@ func replaceDirAtomic(tmpDir string, dest string) error {
 		return fmt.Errorf("stat destination %s: %w", dest, err)
 	}
 
-	if err := os.Rename(tmpDir, dest); err != nil {
+	if err := moveDir(tmpDir, dest); err != nil {
 		if backupPath != "" {
 			_ = os.Rename(backupPath, dest)
 		}
@@ -158,6 +164,23 @@ func replaceDirAtomic(tmpDir string, dest string) error {
 		}
 	}
 
+	return nil
+}
+
+func moveDir(src string, dst string) error {
+	if err := os.Rename(src, dst); err != nil {
+		var linkErr *os.LinkError
+		if errors.As(err, &linkErr) && errors.Is(linkErr.Err, syscall.EXDEV) {
+			if err := copyDir(src, dst); err != nil {
+				return err
+			}
+			if err := os.RemoveAll(src); err != nil {
+				return err
+			}
+			return nil
+		}
+		return err
+	}
 	return nil
 }
 
@@ -277,7 +300,7 @@ func checkFontsInstalled() doctorCheck {
 }
 
 func checkFontCache() doctorCheck {
-	cmd := exec.Command("fc-cache", "-f")
+	cmd := commandRunner("fc-cache", "-f")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
@@ -341,12 +364,17 @@ func checkThemePermissions() doctorCheck {
 				return errors.New("unable to read ownership metadata")
 			}
 
-			if stat.Uid != 0 || stat.Gid != 0 {
-				return fmt.Errorf("%s is not owned by root:root", itemPath)
+			if int(stat.Uid) != requiredUID || int(stat.Gid) != requiredGID {
+				return fmt.Errorf("%s is owned by %d:%d (expected %d:%d)", itemPath, stat.Uid, stat.Gid, requiredUID, requiredGID)
 			}
 
-			if info.Mode().Perm() != 0o755 {
-				return fmt.Errorf("%s has mode %o", itemPath, info.Mode().Perm())
+			expectedMode := os.FileMode(0o644)
+			if d.IsDir() {
+				expectedMode = 0o755
+			}
+
+			if info.Mode().Perm() != expectedMode {
+				return fmt.Errorf("%s has mode %o (expected %o)", itemPath, info.Mode().Perm(), expectedMode)
 			}
 
 			return nil

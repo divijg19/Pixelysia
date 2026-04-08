@@ -99,7 +99,8 @@ main() {
 
 	sudo install -m 0755 "$tmp_bin" "$INSTALL_PATH"
 	echo "Running system install..."
-	sudo "$INSTALL_PATH" install
+	export PIXELYSIA_SOURCE_DIR="$SCRIPT_DIR"
+	sudo PIXELYSIA_SOURCE_DIR="$SCRIPT_DIR" pixelysia install
 }
 
 main "$@"

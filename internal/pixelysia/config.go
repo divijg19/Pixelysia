@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-const (
+var (
 	sddmConfigDir  = "/etc/sddm.conf.d"
 	sddmConfigPath = "/etc/sddm.conf.d/theme.conf"
 )
@@ -54,7 +54,7 @@ func CurrentTheme() (string, error) {
 
 	theme, ok := parseCurrentTheme(b)
 	if !ok {
-		return "", errors.New("Current theme is not configured in /etc/sddm.conf.d/theme.conf")
+		return "", errors.New("current theme is not configured in /etc/sddm.conf.d/theme.conf")
 	}
 	return theme, nil
 }
@@ -192,8 +192,8 @@ func writeFileAtomic(path string, data []byte, mode os.FileMode) error {
 	if err := tmp.Chmod(mode); err != nil {
 		return err
 	}
-	if err := tmp.Chown(0, 0); err != nil {
-		return err
+	if err := tmp.Chown(requiredUID, requiredGID); err != nil {
+		return fmt.Errorf("set ownership on %s failed; rerun with sudo: %w", path, err)
 	}
 	if err := tmp.Close(); err != nil {
 		return err
