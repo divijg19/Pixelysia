@@ -6,9 +6,22 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func TestInstallRejectsMutuallyExclusiveOptions(t *testing.T) {
+	setupTestGlobals(t)
+
+	err := Install(InstallOptions{Split: true, Theme: "alpha"}, io.Discard)
+	if err == nil {
+		t.Fatal("expected install to fail for mutually exclusive options")
+	}
+	if !strings.Contains(err.Error(), "cannot be used together") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestInstallFullMode(t *testing.T) {
 	setupTestGlobals(t)
@@ -179,6 +192,153 @@ func TestInstallAndListIntegration(t *testing.T) {
 	}
 }
 
+func TestInstallIdempotentReinstall(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createSourceTree(t, []string{"alpha", "beta"})
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{Split: true}, io.Discard); err != nil {
+		t.Fatalf("first install failed: %v", err)
+	}
+	firstCount, err := countTreeEntries(sddmThemesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Install(InstallOptions{Split: true}, io.Discard); err != nil {
+		t.Fatalf("second install failed: %v", err)
+	}
+	secondCount, err := countTreeEntries(sddmThemesDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if firstCount != secondCount {
+		t.Fatalf("expected stable entry count after reinstall, got %d vs %d", firstCount, secondCount)
+	}
+}
+
+func TestInstallFailsForInvalidSourceEnv(t *testing.T) {
+	setupTestGlobals(t)
+
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+
+	if err := os.Setenv(sourceDirEnv, filepath.Join(tmpRoot, "missing")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Install(InstallOptions{}, io.Discard)
+	if err == nil {
+		t.Fatal("expected install to fail when source env is invalid")
+	}
+	if !strings.Contains(err.Error(), sourceDirEnv) {
+		t.Fatalf("expected error to mention source env var, got %v", err)
+	}
+}
+
+func TestInstallSingleThemeMissing(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createSourceTree(t, []string{"alpha"})
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Install(InstallOptions{Theme: "missing"}, io.Discard)
+	if err == nil {
+		t.Fatal("expected single theme install to fail for missing theme")
+	}
+}
+
+func TestInstallFailurePreservesExistingDestination(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createSourceTree(t, []string{"alpha"})
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Install(InstallOptions{}, io.Discard); err != nil {
+		t.Fatalf("initial install failed: %v", err)
+	}
+
+	marker := filepath.Join(sddmThemesDir, fullThemeName, "marker.txt")
+	if err := os.WriteFile(marker, []byte("keep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.Remove(filepath.Join(srcRoot, "themes", "alpha", "Main.qml")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := Install(InstallOptions{}, io.Discard)
+	if err == nil {
+		t.Fatal("expected reinstall to fail with broken source theme")
+	}
+
+	b, readErr := os.ReadFile(marker)
+	if readErr != nil {
+		t.Fatalf("expected previous installation to remain intact, got %v", readErr)
+	}
+	if string(b) != "keep" {
+		t.Fatalf("unexpected marker contents: %q", string(b))
+	}
+}
+
+func TestInstallPermissionFailureIsExplicit(t *testing.T) {
+	setupTestGlobals(t)
+	if runtime.GOOS != "linux" {
+		t.Skip("permission simulation is linux-specific")
+	}
+
+	srcRoot := createSourceTree(t, []string{"alpha"})
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+
+	requiredUID = os.Getuid() + 10000
+	err := Install(InstallOptions{}, io.Discard)
+	if err == nil {
+		t.Fatal("expected permission-related failure")
+	}
+	if !strings.Contains(err.Error(), "ownership") && !strings.Contains(err.Error(), "operation not permitted") {
+		t.Fatalf("expected actionable permission error, got %v", err)
+	}
+}
+
 func createSourceTree(t *testing.T, themes []string) string {
 	t.Helper()
 
@@ -224,4 +384,16 @@ func mustExistFile(t *testing.T, path string) {
 	if !info.Mode().IsRegular() {
 		t.Fatalf("expected %s to be a file", path)
 	}
+}
+
+func countTreeEntries(root string) (int, error) {
+	count := 0
+	err := filepath.WalkDir(root, func(_ string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		count++
+		return nil
+	})
+	return count, err
 }

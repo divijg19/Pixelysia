@@ -69,3 +69,83 @@ func TestCLIUnknownCommand(t *testing.T) {
 		t.Fatalf("unexpected stderr: %s", errOut.String())
 	}
 }
+
+func TestCLIInstallRejectsPositionalArguments(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"install", "extra"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+	if !strings.Contains(errOut.String(), "does not accept positional arguments") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestCLIListRejectsArguments(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"list", "extra"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+	if !strings.Contains(errOut.String(), "list does not accept arguments") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestCLICurrentRejectsArguments(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"current", "extra"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+	if !strings.Contains(errOut.String(), "current does not accept arguments") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestCLIDoctorRejectsArguments(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"doctor", "extra"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit code")
+	}
+	if !strings.Contains(errOut.String(), "doctor does not accept arguments") {
+		t.Fatalf("unexpected stderr: %s", errOut.String())
+	}
+}
+
+func TestCLIHelpReturnsSuccess(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"help"})
+	if code != 0 {
+		t.Fatal("expected zero exit code for help")
+	}
+	if !strings.Contains(out.String(), "Usage:") {
+		t.Fatalf("expected usage output, got: %s", out.String())
+	}
+}

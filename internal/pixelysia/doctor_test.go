@@ -136,3 +136,53 @@ func TestRunDoctorReportsFailures(t *testing.T) {
 		t.Fatalf("expected FAIL output, got:\n%s", output)
 	}
 }
+
+func TestRunDoctorAllPass(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	fontDir = filepath.Join(root, "fonts")
+	sddmThemesDir = filepath.Join(root, "themes")
+	sddmConfigPath = filepath.Join(root, "conf", "theme.conf")
+	sddmConfigDir = filepath.Dir(sddmConfigPath)
+
+	if err := os.MkdirAll(fontDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fontDir, "A.ttf"), []byte("font"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	themeDir := filepath.Join(sddmThemesDir, "alpha")
+	if err := os.MkdirAll(themeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(themeDir, "Main.qml"), []byte("qml"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.MkdirAll(sddmConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sddmConfigPath, []byte("[Theme]\nCurrent=alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	var out bytes.Buffer
+	err := RunDoctor(&out)
+	if err != nil {
+		t.Fatalf("expected doctor to pass, got %v", err)
+	}
+
+	output := out.String()
+	if strings.Contains(output, "[FAIL]") {
+		t.Fatalf("did not expect FAIL output, got:\n%s", output)
+	}
+	if strings.Count(output, "[OK]") < 5 {
+		t.Fatalf("expected all checks to report OK, got:\n%s", output)
+	}
+}

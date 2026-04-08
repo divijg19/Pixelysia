@@ -129,3 +129,123 @@ func TestUpdateThemeConfigAddsMissingThemeSection(t *testing.T) {
 		t.Fatalf("expected theme section to be added: %s", out)
 	}
 }
+
+func TestSetThemeFailsWhenThemeNotInstalled(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	sddmThemesDir = filepath.Join(root, "themes")
+	sddmConfigDir = filepath.Join(root, "conf")
+	sddmConfigPath = filepath.Join(sddmConfigDir, "theme.conf")
+
+	err := SetTheme("missing")
+	if err == nil {
+		t.Fatal("expected SetTheme to fail for missing installed theme")
+	}
+}
+
+func TestSetThemeWithEmptyConfig(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	sddmThemesDir = filepath.Join(root, "themes")
+	sddmConfigDir = filepath.Join(root, "conf")
+	sddmConfigPath = filepath.Join(sddmConfigDir, "theme.conf")
+
+	if err := os.MkdirAll(filepath.Join(sddmThemesDir, "omega"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sddmConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sddmConfigPath, []byte(""), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SetTheme("omega"); err != nil {
+		t.Fatalf("SetTheme failed: %v", err)
+	}
+
+	b, err := os.ReadFile(sddmConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := strings.TrimSpace(string(b))
+	if out != "[Theme]\nCurrent=omega" {
+		t.Fatalf("unexpected config for empty input:\n%s", string(b))
+	}
+}
+
+func TestSetThemeWithMalformedConfig(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	sddmThemesDir = filepath.Join(root, "themes")
+	sddmConfigDir = filepath.Join(root, "conf")
+	sddmConfigPath = filepath.Join(sddmConfigDir, "theme.conf")
+
+	if err := os.MkdirAll(filepath.Join(sddmThemesDir, "delta"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sddmConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	malformed := "[General\nDisplayServer=x11\n"
+	if err := os.WriteFile(sddmConfigPath, []byte(malformed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SetTheme("delta"); err != nil {
+		t.Fatalf("SetTheme failed on malformed config: %v", err)
+	}
+
+	b, err := os.ReadFile(sddmConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if !strings.Contains(out, "DisplayServer=x11") {
+		t.Fatalf("expected malformed content to be preserved, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[Theme]\nCurrent=delta") {
+		t.Fatalf("expected [Theme] section to be appended, got:\n%s", out)
+	}
+}
+
+func TestSetThemeWithDuplicateThemeSections(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	sddmThemesDir = filepath.Join(root, "themes")
+	sddmConfigDir = filepath.Join(root, "conf")
+	sddmConfigPath = filepath.Join(sddmConfigDir, "theme.conf")
+
+	if err := os.MkdirAll(filepath.Join(sddmThemesDir, "neo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sddmConfigDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	in := "[Theme]\nCurrent=one\n\n[Theme]\nCurrent=two\n"
+	if err := os.WriteFile(sddmConfigPath, []byte(in), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SetTheme("neo"); err != nil {
+		t.Fatalf("SetTheme failed: %v", err)
+	}
+
+	b, err := os.ReadFile(sddmConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := string(b)
+	if strings.Count(out, "Current=neo") != 2 {
+		t.Fatalf("expected both theme sections to be updated, got:\n%s", out)
+	}
+	if strings.Contains(out, "Current=one") || strings.Contains(out, "Current=two") {
+		t.Fatalf("expected old values to be replaced, got:\n%s", out)
+	}
+}

@@ -168,3 +168,119 @@ func TestThemePathValidation(t *testing.T) {
 		t.Fatal("expected invalid theme path to fail")
 	}
 }
+
+func TestCopyFileMissingSource(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	err := copyFile(filepath.Join(root, "missing.txt"), filepath.Join(root, "dst.txt"), 0o644)
+	if err == nil {
+		t.Fatal("expected copyFile to fail when source is missing")
+	}
+}
+
+func TestCopyDirOverwriteExistingFile(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	dst := filepath.Join(root, "dst")
+
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "file.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dst, "file.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyDir(src, dst); err != nil {
+		t.Fatalf("copyDir failed: %v", err)
+	}
+
+	b, err := os.ReadFile(filepath.Join(dst, "file.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != "new" {
+		t.Fatalf("expected destination file to be overwritten, got %q", string(b))
+	}
+}
+
+func TestCopyDirPartialFailureLeavesNoCorruption(t *testing.T) {
+	setupTestGlobals(t)
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink behavior differs on windows")
+	}
+
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	dst := filepath.Join(root, "dst")
+
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "a.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("target", filepath.Join(src, "z-link")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := copyDir(src, dst)
+	if err == nil {
+		t.Fatal("expected copyDir to fail due to symlink")
+	}
+	if !strings.Contains(err.Error(), "symlinks are not supported") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	b, readErr := os.ReadFile(filepath.Join(dst, "a.txt"))
+	if readErr != nil {
+		t.Fatalf("expected copied regular file to remain after failure: %v", readErr)
+	}
+	if string(b) != "ok" {
+		t.Fatalf("unexpected copied data: %q", string(b))
+	}
+	if _, statErr := os.Stat(filepath.Join(dst, "z-link")); !os.IsNotExist(statErr) {
+		t.Fatalf("did not expect symlink copy output, got err=%v", statErr)
+	}
+}
+
+func TestReplaceDirAtomicRejectsFileTempPath(t *testing.T) {
+	setupTestGlobals(t)
+
+	root := t.TempDir()
+	tmpFile := filepath.Join(root, "tmpfile")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := replaceDirAtomic(tmpFile, filepath.Join(root, "dest"))
+	if err == nil {
+		t.Fatal("expected replaceDirAtomic to fail for non-directory temp path")
+	}
+}
+
+func TestValidateThemeName(t *testing.T) {
+	setupTestGlobals(t)
+
+	valid := []string{"alpha", "pixel-theme", "theme_name", "theme.name", "a1"}
+	for _, name := range valid {
+		if err := validateThemeName(name); err != nil {
+			t.Fatalf("expected valid name %q, got %v", name, err)
+		}
+	}
+
+	invalid := []string{"", "..", "../x", "bad/name", "white space", "*"}
+	for _, name := range invalid {
+		if err := validateThemeName(name); err == nil {
+			t.Fatalf("expected invalid name %q to fail", name)
+		}
+	}
+}
