@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -13,7 +12,10 @@ import (
 
 const (
 	fullThemeName = "pixelysia"
+	sourceDirEnv  = "PIXELYSIA_SOURCE_DIR"
+)
 
+var (
 	sddmThemesDir = "/usr/share/sddm/themes"
 	fontDir       = "/usr/share/fonts/pixelysia"
 )
@@ -87,7 +89,7 @@ func installFonts(srcRoot string) error {
 		return errors.New("no .ttf files found in fonts directory")
 	}
 
-	tmpDir, err := os.MkdirTemp(filepath.Dir(fontDir), ".pixelysia-fonts-")
+	tmpDir, err := os.MkdirTemp("", ".pixelysia-fonts-")
 	if err != nil {
 		return fmt.Errorf("create temp fonts directory: %w", err)
 	}
@@ -101,7 +103,7 @@ func installFonts(srcRoot string) error {
 	if err := os.Chmod(tmpDir, 0o755); err != nil {
 		return fmt.Errorf("set temp fonts permissions: %w", err)
 	}
-	if err := os.Chown(tmpDir, 0, 0); err != nil {
+	if err := os.Chown(tmpDir, requiredUID, requiredGID); err != nil {
 		return fmt.Errorf("set temp fonts ownership: %w", err)
 	}
 
@@ -110,7 +112,7 @@ func installFonts(srcRoot string) error {
 		if err := copyFile(src, dst, 0o644); err != nil {
 			return err
 		}
-		if err := os.Chown(dst, 0, 0); err != nil {
+		if err := os.Chown(dst, requiredUID, requiredGID); err != nil {
 			return fmt.Errorf("set font ownership %s: %w", dst, err)
 		}
 	}
@@ -120,18 +122,18 @@ func installFonts(srcRoot string) error {
 	}
 	cleanupTmp = false
 
-	cmd := exec.Command("fc-cache", "-fv")
+	cmd := commandRunner("fc-cache", "-f")
 	cmd.Stdout = io.Discard
 	cmd.Stderr = io.Discard
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("rebuild font cache with fc-cache: %w", err)
+		return fmt.Errorf("rebuild font cache failed; ensure fc-cache is installed and rerun with sudo: %w", err)
 	}
 
 	return nil
 }
 
 func installFullTheme(srcRoot string) error {
-	tmpDir, err := os.MkdirTemp(sddmThemesDir, ".pixelysia-theme-")
+	tmpDir, err := os.MkdirTemp("", ".pixelysia-theme-")
 	if err != nil {
 		return fmt.Errorf("create temp theme directory: %w", err)
 	}
@@ -157,6 +159,16 @@ func installFullTheme(srcRoot string) error {
 		}
 	}
 
+	themeNames, err := discoverSourceThemes(srcRoot)
+	if err != nil {
+		return err
+	}
+	for _, name := range themeNames {
+		if err := validateThemeSource(filepath.Join(srcRoot, "themes", name)); err != nil {
+			return fmt.Errorf("validate source theme %q: %w", name, err)
+		}
+	}
+
 	if err := copyDir(filepath.Join(srcRoot, "themes"), filepath.Join(tmpDir, "themes")); err != nil {
 		return err
 	}
@@ -164,7 +176,7 @@ func installFullTheme(srcRoot string) error {
 		return err
 	}
 
-	if err := setOwnershipAndModeRecursive(tmpDir, 0, 0, 0o755, 0o755); err != nil {
+	if err := setOwnershipAndModeRecursive(tmpDir, requiredUID, requiredGID, 0o644, 0o755); err != nil {
 		return err
 	}
 
@@ -182,7 +194,7 @@ func installSingleSplitTheme(srcRoot string, themeName string) error {
 	}
 
 	src := filepath.Join(srcRoot, "themes", themeName)
-	if err := ensureDirectory(src); err != nil {
+	if err := validateThemeSource(src); err != nil {
 		return fmt.Errorf("theme %q not found in source: %w", themeName, err)
 	}
 
@@ -191,7 +203,7 @@ func installSingleSplitTheme(srcRoot string, themeName string) error {
 		return err
 	}
 
-	tmpDir, err := os.MkdirTemp(sddmThemesDir, ".pixelysia-split-")
+	tmpDir, err := os.MkdirTemp("", ".pixelysia-split-")
 	if err != nil {
 		return fmt.Errorf("create temp split theme directory: %w", err)
 	}
@@ -205,7 +217,7 @@ func installSingleSplitTheme(srcRoot string, themeName string) error {
 	if err := copyDir(src, tmpDir); err != nil {
 		return err
 	}
-	if err := setOwnershipAndModeRecursive(tmpDir, 0, 0, 0o755, 0o755); err != nil {
+	if err := setOwnershipAndModeRecursive(tmpDir, requiredUID, requiredGID, 0o644, 0o755); err != nil {
 		return err
 	}
 
@@ -271,7 +283,7 @@ func discoverSourceThemes(srcRoot string) ([]string, error) {
 			continue
 		}
 		if err := validateThemeName(e.Name()); err != nil {
-			continue
+			return nil, fmt.Errorf("invalid theme directory name %q: %w", e.Name(), err)
 		}
 		names = append(names, e.Name())
 	}
@@ -285,11 +297,18 @@ func discoverSourceThemes(srcRoot string) ([]string, error) {
 }
 
 func detectSourceRoot() (string, error) {
-	candidates := make([]string, 0, 3)
-
-	if env := strings.TrimSpace(os.Getenv("PIXELYSIA_SOURCE_DIR")); env != "" {
-		candidates = append(candidates, env)
+	if env := strings.TrimSpace(os.Getenv(sourceDirEnv)); env != "" {
+		abs, err := filepath.Abs(env)
+		if err != nil {
+			return "", fmt.Errorf("resolve %s: %w", sourceDirEnv, err)
+		}
+		if err := validateSourceRoot(abs); err != nil {
+			return "", fmt.Errorf("invalid %s=%q: %w", sourceDirEnv, env, err)
+		}
+		return abs, nil
 	}
+
+	candidates := make([]string, 0, 2)
 
 	if cwd, err := os.Getwd(); err == nil {
 		candidates = append(candidates, cwd)
@@ -314,17 +333,34 @@ func detectSourceRoot() (string, error) {
 		}
 		seen[abs] = struct{}{}
 
-		if err := ensureRegularFile(filepath.Join(abs, "Main.qml")); err != nil {
-			continue
-		}
-		if err := ensureDirectory(filepath.Join(abs, "themes")); err != nil {
-			continue
-		}
-		if err := ensureDirectory(filepath.Join(abs, "fonts")); err != nil {
+		if err := validateSourceRoot(abs); err != nil {
 			continue
 		}
 		return abs, nil
 	}
 
-	return "", errors.New("unable to locate Pixelysia source directory; run from repository root or set PIXELYSIA_SOURCE_DIR")
+	return "", errors.New("unable to locate Pixelysia source directory; run from the repository root or set PIXELYSIA_SOURCE_DIR to a directory containing Main.qml, themes/, and fonts/")
+}
+
+func validateSourceRoot(root string) error {
+	if err := ensureRegularFile(filepath.Join(root, "Main.qml")); err != nil {
+		return fmt.Errorf("missing dispatcher Main.qml: %w", err)
+	}
+	if err := ensureDirectory(filepath.Join(root, "themes")); err != nil {
+		return fmt.Errorf("missing themes directory: %w", err)
+	}
+	if err := ensureDirectory(filepath.Join(root, "fonts")); err != nil {
+		return fmt.Errorf("missing fonts directory: %w", err)
+	}
+	return nil
+}
+
+func validateThemeSource(themeDir string) error {
+	if err := ensureDirectory(themeDir); err != nil {
+		return err
+	}
+	if err := ensureRegularFile(filepath.Join(themeDir, "Main.qml")); err != nil {
+		return fmt.Errorf("missing required Main.qml: %w", err)
+	}
+	return nil
 }

@@ -1,230 +1,119 @@
-# `Pixelysia`
-> SDDM Theme System
+# Pixelysia
 
-`Pixelysia` is a curated, multi-theme SDDM setup that uses a dispatcher to select between multiple themes at login. It is designed to be portable, reproducible, and easy to install.
+Pixelysia is a Linux-native SDDM theming runtime and CLI.
 
----
+## What It Installs
 
-## Overview
+Pixelysia installs fonts and themes using the `pixelysia` CLI.
 
-Instead of a single static theme, `Pixelysia` loads one of several themes at runtime using a weighted selection system. This provides variety while maintaining a consistent overall style.
+Fonts:
 
-The repository includes:
+- Source: `fonts/*.ttf`
+- Destination: `/usr/share/fonts/pixelysia/`
 
-* Multiple SDDM themes
-* A dispatcher (`Main.qml`) that selects a theme
-* Bundled fonts required by the themes
-* An installation script
+Themes:
 
----
+- Full mode: `/usr/share/sddm/themes/pixelysia/`
+- Split mode: `/usr/share/sddm/themes/<theme-name>/`
 
-## Features
+SDDM config:
 
-* Weighted theme selection via dispatcher
-* Multiple theme groups (pixel, nier, sword, enfield, etc.)
-* No runtime font loading (all fonts installed system-wide)
-* No session selector UI (assumes a default session)
-* Consistent username and password input behavior
-* Cleaned QML (no unused components or font loaders)
-
----
-
-## Directory Structure
-
-```text
-Pixelysia/
-├── Main.qml              # Dispatcher (entry point)
-├── metadata.desktop      # SDDM metadata
-├── themes/               # All included themes
-│   ├── enfield/
-│   ├── forest/
-│   ├── nier-automata/
-│   ├── pixel-*/
-│   ├── star-rail/
-│   ├── sword/
-│   └── tui/
-├── fonts/                # Bundled fonts
-├── install.sh            # Installation script
-├── .gitattributes        # Git LFS configuration
-└── README.md
-```
-
----
+- `/etc/sddm.conf.d/theme.conf`
 
 ## Requirements
 
-* SDDM (Qt6 build recommended)
-* Linux system using SDDM as display manager
-* `git` and `git-lfs` (for cloning the repository)
-
-Some themes require:
-
-```bash
-sudo dnf install qt6-qt5compat
-```
-
----
+- Linux
+- SDDM
+- `sudo`
+- `curl` for release download (optional if building locally)
+- Go toolchain for local build fallback in `install.sh`
 
 ## Installation
 
-### 1. Clone the repository
+Clone and install:
 
 ```bash
 git clone https://github.com/divijg19/Pixelysia.git
 cd Pixelysia
-```
-
----
-
-### 2. Run install script
-
-```bash
 ./install.sh
 ```
 
-This will:
+`install.sh` performs bootstrap only:
 
-* Install fonts to `~/.local/share/fonts`
-* Copy the theme to `/usr/share/sddm/themes/Pixelysia`
-* Set `Pixelysia` as the active SDDM theme
+1. Detects Linux architecture (`amd64` or `arm64`)
+2. Downloads latest `pixelysia` release binary from GitHub
+3. Falls back to local build: `CGO_ENABLED=0 go build -o pixelysia ./cmd/pixelysia`
+4. Installs binary to `/usr/local/bin/pixelysia`
+5. Executes: `sudo PIXELYSIA_SOURCE_DIR="$PWD" pixelysia install`
 
----
+## CLI Usage
 
-### 3. Restart SDDM
-
-```bash
-sudo systemctl restart sddm
-```
-
----
-
-## Configuration
-
-### Theme selection
-
-Theme selection is controlled by:
-
-```text
-Main.qml
-```
-
-The dispatcher uses a weighted pool. You can adjust probabilities by modifying the number of entries for each theme.
-
----
-
-### Fonts
-
-Fonts are bundled under:
-
-```text
-fonts/
-```
-
-They are installed to:
-
-```text
-/usr/share/fonts
-```
-
-No QML font loading is used. All themes rely on system fonts.
-
----
-
-### SDDM configuration
-
-The install script writes:
-
-```text
-/etc/sddm.conf.d/theme.conf
-```
-
-With:
-
-```ini
-[Theme]
-Current=Pixelysia
-```
-
----
-
-## Development
-
-### Editing themes
-
-Edit files under:
-
-```text
-themes/
-```
-
-After changes:
+Install full runtime bundle:
 
 ```bash
-sudo cp -r Pixelysia /usr/share/sddm/themes/Pixelysia
+sudo PIXELYSIA_SOURCE_DIR="$(pwd)" pixelysia install
 ```
 
-Then test:
+Install themes in split mode:
 
 ```bash
-sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/Pixelysia
+sudo PIXELYSIA_SOURCE_DIR="$(pwd)" pixelysia install --split
 ```
 
----
-
-### Dispatcher
-
-The dispatcher (`Main.qml`) selects which theme to load. It supports:
-
-* Grouped themes (pixel, tui, etc.)
-* Weighted randomness
-
----
-
-## Git LFS
-
-Large assets (videos, images) are tracked using Git LFS.
-
-Setup:
+Install one theme:
 
 ```bash
-git lfs install
-git lfs track "*.mp4"
-git lfs track "*.png"
+sudo PIXELYSIA_SOURCE_DIR="$(pwd)" pixelysia install --theme pixel-dusk-city
 ```
 
----
-
-## Notes
-
-* The session selector UI has been removed; a default session must be configured in SDDM.
-* Themes are independent; shared behavior was applied via batch refactoring rather than runtime centralization.
-* Fonts are required for correct rendering.
-
----
-
-## Troubleshooting
-
-### Theme not applied
-
-Check:
+Set active theme:
 
 ```bash
-cat /etc/sddm.conf.d/theme.conf
+sudo pixelysia set pixelysia
 ```
 
----
-
-### Test manually
+List installed themes:
 
 ```bash
-sddm-greeter-qt6 --test-mode --theme /usr/share/sddm/themes/Pixelysia
+pixelysia list
 ```
 
----
-
-### Fonts not applied
+Show current theme:
 
 ```bash
-fc-cache -fv
-fc-list | grep -i pixelify
+pixelysia current
 ```
+
+Remove an installed theme:
+
+```bash
+sudo pixelysia remove pixel-dusk-city
+```
+
+Run system diagnostics:
+
+```bash
+pixelysia doctor
+```
+
+## Testing
+
+Run all tests:
+
+```bash
+go test ./...
+```
+
+Run with coverage:
+
+```bash
+go test ./... -cover
+```
+
+All tests use temporary directories and do not require root.
+
+## Development Notes
+
+- Runtime source discovery prioritizes `PIXELYSIA_SOURCE_DIR`
+- For local development, run commands from repository root or set `PIXELYSIA_SOURCE_DIR`
+- Font cache refresh uses `fc-cache -f`
