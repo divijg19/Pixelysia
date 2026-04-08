@@ -17,6 +17,8 @@ func NewCLI(out io.Writer, err io.Writer) *CLI {
 }
 
 func (c *CLI) Run(args []string) int {
+	applyRuntimeEnvOverrides()
+
 	if len(args) == 0 {
 		c.printUsage()
 		return 1

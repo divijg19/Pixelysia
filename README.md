@@ -112,6 +112,21 @@ go test ./... -cover
 
 All tests use temporary directories and do not require root.
 
+### Runtime-style CLI tests
+
+Runtime execution tests run `pixelysia` through subprocess calls (`go run ./cmd/pixelysia ...`) in isolated temporary environments.
+These tests do not write to real system paths.
+
+## CI
+
+GitHub Actions workflow: `.github/workflows/ci.yml`
+
+The CI pipeline runs on `ubuntu-latest` for:
+
+1. Build: `go build ./...`
+2. Tests: `go test ./... -v`
+3. Lint: `go vet ./...` and `gofmt` check
+
 ## Development Notes
 
 - Runtime source discovery prioritizes `PIXELYSIA_SOURCE_DIR`

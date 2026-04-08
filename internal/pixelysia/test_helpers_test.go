@@ -42,5 +42,11 @@ func setupTestGlobals(t *testing.T) {
 		requiredGID = saved.requiredGID
 		commandRunner = saved.commandRunner
 		_ = os.Unsetenv(sourceDirEnv)
+		_ = os.Unsetenv(envThemesDir)
+		_ = os.Unsetenv(envFontDir)
+		_ = os.Unsetenv(envConfigDir)
+		_ = os.Unsetenv(envConfigPath)
+		_ = os.Unsetenv(envReqUID)
+		_ = os.Unsetenv(envReqGID)
 	})
 }
