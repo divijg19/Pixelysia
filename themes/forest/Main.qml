@@ -245,5 +245,8 @@ Item {
 
     ListView { id: userHelper; model: userModel; currentIndex: root.userIndex; opacity: 0; width: 1; height: 1; z: -100; delegate: Item { property string uName: model.realName || model.name || ""; property string uLogin: model.name || "" } }
     NumberAnimation { id: fadeIn; target: root; property: "uiOpacity"; to: 1; duration: 2500; easing.type: Easing.OutCubic }
-    Component.onCompleted: fadeIn.start()
+    Component.onCompleted: {
+        fadeIn.start()
+        passInput.forceActiveFocus()
+    } 
 }
