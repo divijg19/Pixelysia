@@ -51,7 +51,7 @@ Rectangle {
 
         // User Select
         Text {
-            text: (userModel.lastUser || "kamikuma").toUpperCase()
+            text: (userModel.lastUser || "").toUpperCase()
             color: "white"; font.family: "Pixelify Sans"; font.pixelSize: 22 * s; font.letterSpacing: 3 * s; font.weight: Font.Bold
             layer.enabled: true; layer.effect: DropShadow { color: "#aa000000"; radius: 4; samples: 8; horizontalOffset: 1; verticalOffset: 1 }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if (userModel && userModel.rowCount() > 0) root.userIndex = (root.userIndex + 1) % userModel.rowCount() } }

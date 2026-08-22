@@ -74,6 +74,64 @@ func TestRuntimeCLIExecutionFlow(t *testing.T) {
 	}
 }
 
+func TestRuntimeNestedThemeFlow(t *testing.T) {
+	srcRoot := createNestedSourceTree(t)
+	root := t.TempDir()
+	themesDir := filepath.Join(root, "themes")
+	fontsDir := filepath.Join(root, "fonts")
+	configPath := filepath.Join(root, "conf", "theme.conf")
+	fakeBin := createFakeBin(t)
+
+	env := []string{
+		sourceDirEnv + "=" + srcRoot,
+		envThemesDir + "=" + themesDir,
+		envFontDir + "=" + fontsDir,
+		envConfigDir + "=" + filepath.Dir(configPath),
+		envConfigPath + "=" + configPath,
+		envReqUID + "=" + fmt.Sprintf("%d", os.Getuid()),
+		envReqGID + "=" + fmt.Sprintf("%d", os.Getgid()),
+		"PATH=" + fakeBin + string(os.PathListSeparator) + os.Getenv("PATH"),
+	}
+
+	res := runPixelysiaCommand(t, env, "install", "--split")
+	if res.err != nil {
+		t.Fatalf("split install failed: %v\nstderr=%s", res.err, res.stderr)
+	}
+	if !strings.Contains(res.stdout, "Installing theme: tui/Amber") {
+		t.Fatalf("unexpected install output: %s", res.stdout)
+	}
+	mustExistFile(t, filepath.Join(themesDir, "tui", "Amber", "Main.qml"))
+
+	res = runPixelysiaCommand(t, env, "set", "tui/Amber")
+	if res.err != nil {
+		t.Fatalf("set nested theme failed: %v\nstderr=%s", res.err, res.stderr)
+	}
+
+	res = runPixelysiaCommand(t, env, "current")
+	if res.err != nil {
+		t.Fatalf("current failed: %v\nstderr=%s", res.err, res.stderr)
+	}
+	if strings.TrimSpace(res.stdout) != "tui/Amber" {
+		t.Fatalf("expected current theme tui/Amber, got %q", strings.TrimSpace(res.stdout))
+	}
+
+	res = runPixelysiaCommand(t, env, "list")
+	if res.err != nil {
+		t.Fatalf("list failed: %v\nstderr=%s", res.err, res.stderr)
+	}
+	for _, expected := range []string{"forest", "tui/Amber", "tui/Emerald"} {
+		if !strings.Contains(res.stdout, expected) {
+			t.Fatalf("expected list to contain %q, got: %s", expected, res.stdout)
+		}
+	}
+
+	res = runPixelysiaCommand(t, env, "remove", "tui/Amber")
+	if res.err != nil {
+		t.Fatalf("remove nested theme failed: %v\nstderr=%s", res.err, res.stderr)
+	}
+	mustNotExist(t, filepath.Join(themesDir, "tui", "Amber"))
+}
+
 func TestRuntimeCLIErrorExitAndStderr(t *testing.T) {
 	srcRoot := createSourceTree(t, []string{"alpha"})
 	root := t.TempDir()

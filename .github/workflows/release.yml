@@ -17,6 +17,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
+        with:
+          lfs: true
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -32,16 +34,32 @@ jobs:
             -o dist/pixelysia-linux-${{ matrix.goarch }} ./cmd/pixelysia
           chmod +x dist/pixelysia-linux-${{ matrix.goarch }}
 
+      - name: Build Payload Archive
+        if: matrix.goarch == 'amd64'
+        run: |
+          tar -czf dist/pixelysia-payload.tar.gz Main.qml metadata.desktop themes fonts
+
       - name: Smoke Test (amd64)
         if: matrix.goarch == 'amd64'
         run: |
           ./dist/pixelysia-linux-amd64 --help > /dev/null
+          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'Main.qml'
+          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'metadata.desktop'
+          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'themes/tui/Amber/Main.qml'
+          tar -tzf dist/pixelysia-payload.tar.gz | grep -q 'fonts/.*\.ttf'
 
       - name: Upload Binary Artifact
         uses: actions/upload-artifact@v4
         with:
           name: pixelysia-linux-${{ matrix.goarch }}
           path: dist/pixelysia-linux-${{ matrix.goarch }}
+
+      - name: Upload Payload Artifact
+        if: matrix.goarch == 'amd64'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pixelysia-payload
+          path: dist/pixelysia-payload.tar.gz
 
   release:
     runs-on: ubuntu-latest
@@ -52,7 +70,7 @@ jobs:
       - name: Download Built Binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: pixelysia-linux-*
+          pattern: pixelysia-*
           merge-multiple: true
           path: dist
 
@@ -60,6 +78,7 @@ jobs:
         run: |
           test -f dist/pixelysia-linux-amd64
           test -f dist/pixelysia-linux-arm64
+          test -f dist/pixelysia-payload.tar.gz
           chmod +x dist/pixelysia-linux-amd64 dist/pixelysia-linux-arm64
 
       - name: Create GitHub Release
@@ -68,4 +87,5 @@ jobs:
           files: |
             dist/pixelysia-linux-amd64
             dist/pixelysia-linux-arm64
+            dist/pixelysia-payload.tar.gz
           fail_on_unmatched_files: true

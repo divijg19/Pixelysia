@@ -386,6 +386,270 @@ func mustExistFile(t *testing.T, path string) {
 	}
 }
 
+func mustNotExist(t *testing.T, path string) {
+	t.Helper()
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Fatalf("expected %s to not exist, err=%v", path, err)
+	}
+}
+
+// createNestedSourceTree builds a source tree that mirrors the real
+// repository hierarchy: flat top-level themes plus a "tui" category
+// directory containing nested themes, plus an inert asset directory.
+func createNestedSourceTree(t *testing.T) string {
+	t.Helper()
+
+	root := createSourceTree(t, []string{"forest"})
+	themesDir := filepath.Join(root, "themes")
+
+	for _, name := range []string{"Amber", "Emerald"} {
+		dir := filepath.Join(themesDir, "tui", name)
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "Main.qml"), []byte("import QtQuick"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A container directory without any theme inside must be ignored.
+	if err := os.MkdirAll(filepath.Join(themesDir, "extra", "deep"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	return root
+}
+
+func TestDiscoverSourceThemesNested(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+
+	names, err := discoverSourceThemes(srcRoot)
+	if err != nil {
+		t.Fatalf("discoverSourceThemes failed: %v", err)
+	}
+
+	expected := []string{"forest", "tui/Amber", "tui/Emerald"}
+	if strings.Join(names, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected themes %v, got %v", expected, names)
+	}
+}
+
+func TestDiscoverRejectsMalformedThemeDirectory(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createSourceTree(t, []string{"alpha"})
+	broken := filepath.Join(srcRoot, "themes", "broken")
+	if err := os.MkdirAll(broken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(broken, "metadata.desktop"), []byte("[SddmGreeterTheme]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := discoverSourceThemes(srcRoot); err == nil {
+		t.Fatal("expected discovery to fail for metadata.desktop without Main.qml")
+	} else if !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestInstallFullModeWithNestedThemes(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{}, io.Discard); err != nil {
+		t.Fatalf("full install failed: %v", err)
+	}
+
+	fullRoot := filepath.Join(sddmThemesDir, fullThemeName)
+	mustExistFile(t, filepath.Join(fullRoot, "Main.qml"))
+	mustExistFile(t, filepath.Join(fullRoot, "themes", "forest", "Main.qml"))
+	mustExistFile(t, filepath.Join(fullRoot, "themes", "tui", "Amber", "Main.qml"))
+	mustExistFile(t, filepath.Join(fullRoot, "themes", "tui", "Emerald", "Main.qml"))
+}
+
+func TestInstallSplitModeWithNestedThemes(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{Split: true}, io.Discard); err != nil {
+		t.Fatalf("split install failed: %v", err)
+	}
+
+	mustExistFile(t, filepath.Join(sddmThemesDir, "forest", "Main.qml"))
+	mustExistFile(t, filepath.Join(sddmThemesDir, "tui", "Amber", "Main.qml"))
+	mustExistFile(t, filepath.Join(sddmThemesDir, "tui", "Emerald", "Main.qml"))
+
+	// The category directory itself must not be installed as a theme.
+	mustNotExist(t, filepath.Join(sddmThemesDir, "tui", "Main.qml"))
+	mustNotExist(t, filepath.Join(sddmThemesDir, "tui", "metadata.desktop"))
+}
+
+func TestInstallSingleNestedTheme(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{Theme: "tui/Amber"}, io.Discard); err != nil {
+		t.Fatalf("single nested theme install failed: %v", err)
+	}
+
+	mustExistFile(t, filepath.Join(sddmThemesDir, "tui", "Amber", "Main.qml"))
+	mustNotExist(t, filepath.Join(sddmThemesDir, "tui", "Emerald"))
+	mustNotExist(t, filepath.Join(sddmThemesDir, "forest"))
+}
+
+func TestInstallRejectsCategoryAsTheme(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	err := Install(InstallOptions{Theme: "tui"}, io.Discard)
+	if err == nil {
+		t.Fatal("expected installing a category directory to fail")
+	}
+	if !strings.Contains(err.Error(), "tui") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	mustNotExist(t, filepath.Join(sddmThemesDir, "tui"))
+}
+
+func TestInstallMalformedThemeLeavesNoPartialState(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	broken := filepath.Join(srcRoot, "themes", "broken")
+	if err := os.MkdirAll(broken, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(broken, "metadata.desktop"), []byte("[SddmGreeterTheme]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	for _, opts := range []InstallOptions{{}, {Split: true}} {
+		err := Install(opts, io.Discard)
+		if err == nil {
+			t.Fatalf("expected install %+v to fail for malformed theme", opts)
+		}
+		if !strings.Contains(err.Error(), "malformed") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		mustNotExist(t, filepath.Join(fontDir, "TestFont.ttf"))
+		mustNotExist(t, filepath.Join(sddmThemesDir, fullThemeName))
+		mustNotExist(t, filepath.Join(sddmThemesDir, "forest"))
+		mustNotExist(t, filepath.Join(sddmThemesDir, "tui"))
+	}
+}
+
+func TestListThemesReportsNestedIdentifiers(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{Split: true}, io.Discard); err != nil {
+		t.Fatalf("split install failed: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := ListThemes(&out); err != nil {
+		t.Fatalf("ListThemes failed: %v", err)
+	}
+
+	got := strings.Split(strings.TrimSpace(out.String()), "\n")
+	expected := []string{"forest", "tui/Amber", "tui/Emerald"}
+	if strings.Join(got, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected listed themes %v, got %v (%q)", expected, got, out.String())
+	}
+}
+
+func TestListThemesDoesNotDescendIntoBundles(t *testing.T) {
+	setupTestGlobals(t)
+
+	srcRoot := createNestedSourceTree(t)
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	fontDir = filepath.Join(tmpRoot, "fonts")
+	if err := os.Setenv(sourceDirEnv, srcRoot); err != nil {
+		t.Fatal(err)
+	}
+	commandRunner = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+
+	if err := Install(InstallOptions{}, io.Discard); err != nil {
+		t.Fatalf("full install failed: %v", err)
+	}
+
+	var out bytes.Buffer
+	if err := ListThemes(&out); err != nil {
+		t.Fatalf("ListThemes failed: %v", err)
+	}
+
+	got := strings.Fields(out.String())
+	if len(got) != 1 || got[0] != fullThemeName {
+		t.Fatalf("expected only the full bundle to be listed, got %v", got)
+	}
+}
+
 func countTreeEntries(root string) (int, error) {
 	count := 0
 	err := filepath.WalkDir(root, func(_ string, _ os.DirEntry, err error) error {
@@ -396,4 +660,49 @@ func countTreeEntries(root string) (int, error) {
 		return nil
 	})
 	return count, err
+}
+
+// TestDiscoverRealRepositoryTree is the regression test for the v0.4.5
+// installer failure: discovery treated every immediate child of themes/ as
+// a theme and aborted every install mode on the nested "tui" category
+// directory. When the test suite runs from a repository checkout, it
+// exercises discovery and validation against the actual theme tree.
+func TestDiscoverRealRepositoryTree(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Skip("cannot determine repository location")
+	}
+	repoRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
+
+	themesDir := filepath.Join(repoRoot, "themes")
+	if _, err := os.Stat(filepath.Join(repoRoot, "Main.qml")); err != nil {
+		t.Skipf("repository source tree not available at %s", repoRoot)
+	}
+	if _, err := os.Stat(filepath.Join(themesDir, "tui")); err != nil {
+		t.Skipf("nested tui themes not present at %s", themesDir)
+	}
+
+	names, err := discoverSourceThemes(repoRoot)
+	if err != nil {
+		t.Fatalf("discovery failed against the real repository: %v", err)
+	}
+
+	expected := []string{
+		"enfield", "forest", "nier-automata",
+		"pixel-coffee", "pixel-dusk-city", "pixel-emerald",
+		"pixel-hollowknight", "pixel-munchlax", "pixel-night-city",
+		"pixel-rainyroom", "pixel-skyscrapers",
+		"star-rail", "sword",
+		"tui/Amber", "tui/Amethyst", "tui/Crimson", "tui/Emerald", "tui/Indigo",
+	}
+	if strings.Join(names, ",") != strings.Join(expected, ",") {
+		t.Fatalf("expected repository themes:\n%v\ngot:\n%v", expected, names)
+	}
+
+	for _, name := range names {
+		dir := filepath.Join(themesDir, filepath.FromSlash(name))
+		if err := validateThemeSource(dir); err != nil {
+			t.Fatalf("theme %q failed validation: %v", name, err)
+		}
+	}
 }

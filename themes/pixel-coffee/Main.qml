@@ -55,7 +55,7 @@ Rectangle {
         
         Column {
             id: loginCol; width: parent.width; spacing: 18 * s
-            Text { text: (userModel.lastUser || "kamikuma").toUpperCase(); color: "white"; font.family: "Pixelify Sans"; font.pixelSize: 22 * s; font.letterSpacing: 4 * s; anchors.horizontalCenter: parent.horizontalCenter; font.weight: Font.Bold
+            Text { text: (userModel.lastUser || "").toUpperCase(); color: "white"; font.family: "Pixelify Sans"; font.pixelSize: 22 * s; font.letterSpacing: 4 * s; anchors.horizontalCenter: parent.horizontalCenter; font.weight: Font.Bold
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if (userModel && userModel.rowCount() > 0) root.userIndex = (root.userIndex + 1) % userModel.rowCount() } }
             }
             

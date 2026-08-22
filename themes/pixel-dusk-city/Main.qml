@@ -139,7 +139,7 @@ Rectangle {
 
             // Current User
                 Text {
-                      text: (userModel.lastUser || "kamikuma").toUpperCase()
+                      text: (userModel.lastUser || "").toUpperCase()
                     color: root.textWhite; font.family: "Pixelify Sans"; font.weight: Font.Bold; font.pixelSize: 17 * s; font.letterSpacing: 4 * s
                     anchors.horizontalCenter: parent.horizontalCenter
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor

@@ -184,22 +184,30 @@ func moveDir(src string, dst string) error {
 	return nil
 }
 
+// validateThemeName validates a theme identifier. An identifier is a
+// non-empty, '/'-separated sequence of segments relative to the themes
+// directory, e.g. "forest" or "tui/Amber". Each segment may contain ASCII
+// letters, digits, '.', '-' and '_'. Empty segments, traversal segments
+// (".", "..") and backslashes are rejected so that identifiers resolved
+// against the themes directory can never escape it.
 func validateThemeName(name string) error {
 	if name == "" {
 		return errors.New("theme name cannot be empty")
 	}
-	if strings.Contains(name, "/") || strings.Contains(name, "\\") {
-		return fmt.Errorf("invalid theme name %q", name)
-	}
-	if name == "." || name == ".." {
+	if strings.Contains(name, "\\") {
 		return fmt.Errorf("invalid theme name %q", name)
 	}
 
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
-			continue
+	for _, segment := range strings.Split(name, "/") {
+		if segment == "" || segment == "." || segment == ".." {
+			return fmt.Errorf("invalid theme name %q", name)
 		}
-		return fmt.Errorf("invalid theme name %q", name)
+		for _, r := range segment {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' || r == '.' {
+				continue
+			}
+			return fmt.Errorf("invalid theme name %q", name)
+		}
 	}
 	return nil
 }

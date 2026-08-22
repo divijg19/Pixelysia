@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
@@ -35,6 +36,37 @@ func Install(opts InstallOptions, out io.Writer) error {
 		return err
 	}
 
+	// Discover and validate the complete theme set before touching the
+	// system so that a broken source tree cannot leave a partially
+	// completed installation behind.
+	var themeNames []string
+	switch {
+	case opts.Split:
+		themeNames, err = discoverSourceThemes(srcRoot)
+		if err != nil {
+			return err
+		}
+	case opts.Theme != "":
+		if err := validateThemeName(opts.Theme); err != nil {
+			return fmt.Errorf("invalid theme %q: %w", opts.Theme, err)
+		}
+		themeNames = []string{opts.Theme}
+	default:
+		// Full mode validates every discovered theme up front as well;
+		// installation itself copies the whole themes tree.
+		themeNames, err = discoverSourceThemes(srcRoot)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, name := range themeNames {
+		src := filepath.Join(srcRoot, "themes", filepath.FromSlash(name))
+		if err := validateThemeSource(src); err != nil {
+			return fmt.Errorf("validate source theme %q: %w", name, err)
+		}
+	}
+
 	if _, err := fmt.Fprintln(out, "Installing fonts..."); err != nil {
 		return err
 	}
@@ -48,10 +80,6 @@ func Install(opts InstallOptions, out io.Writer) error {
 
 	switch {
 	case opts.Split:
-		themeNames, err := discoverSourceThemes(srcRoot)
-		if err != nil {
-			return err
-		}
 		for _, name := range themeNames {
 			if _, err := fmt.Fprintf(out, "Installing theme: %s\n", name); err != nil {
 				return err
@@ -159,16 +187,8 @@ func installFullTheme(srcRoot string) error {
 		}
 	}
 
-	themeNames, err := discoverSourceThemes(srcRoot)
-	if err != nil {
-		return err
-	}
-	for _, name := range themeNames {
-		if err := validateThemeSource(filepath.Join(srcRoot, "themes", name)); err != nil {
-			return fmt.Errorf("validate source theme %q: %w", name, err)
-		}
-	}
-
+	// All source themes were discovered and validated by Install before
+	// this function was reached.
 	if err := copyDir(filepath.Join(srcRoot, "themes"), filepath.Join(tmpDir, "themes")); err != nil {
 		return err
 	}
@@ -228,17 +248,55 @@ func installSingleSplitTheme(srcRoot string, themeName string) error {
 	return nil
 }
 
+// ListThemes prints the identifiers of all installed themes, sorted
+// lexically. Detection mirrors source discovery: a directory counts as an
+// installed theme when it directly contains Main.qml or metadata.desktop,
+// and container directories are searched recursively so that nested split
+// installations are reported with their canonical identifiers ("tui/Amber").
 func ListThemes(out io.Writer) error {
-	entries, err := os.ReadDir(sddmThemesDir)
-	if err != nil {
+	if err := ensureDirectory(sddmThemesDir); err != nil {
 		return fmt.Errorf("read installed themes: %w", err)
 	}
 
-	names := make([]string, 0)
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
+	hasThemeMarker := func(dir string) bool {
+		for _, marker := range []string{"Main.qml", "metadata.desktop"} {
+			info, err := os.Stat(filepath.Join(dir, marker))
+			if err == nil && info.Mode().IsRegular() {
+				return true
+			}
 		}
+		return false
+	}
+
+	names := make([]string, 0)
+	walkErr := filepath.WalkDir(sddmThemesDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() {
+			return nil
+		}
+
+		rel, err := filepath.Rel(sddmThemesDir, path)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return nil
+		}
+		if strings.HasPrefix(d.Name(), ".") {
+			return fs.SkipDir
+		}
+
+		if hasThemeMarker(path) {
+			names = append(names, filepath.ToSlash(rel))
+			// Do not report themes bundled inside another theme.
+			return fs.SkipDir
+		}
+		return nil
+	})
+	if walkErr != nil {
+		return fmt.Errorf("read installed themes: %w", walkErr)
 	}
 
 	sort.Strings(names)
@@ -270,22 +328,72 @@ func RemoveTheme(name string) error {
 	return nil
 }
 
+// discoverSourceThemes walks srcRoot/themes recursively and returns the
+// identifiers of every discoverable theme, sorted lexically. Discovery is
+// structural, not depth-based: a directory is a theme when it directly
+// contains Main.qml; any other directory is treated as a container and its
+// children are searched. This supports both flat layouts ("themes/forest")
+// and nested category layouts ("themes/tui/Amber"). Identifiers use '/'
+// separators relative to the themes directory (e.g. "tui/Amber").
+//
+// A directory that contains metadata.desktop but no Main.qml is reported as
+// malformed instead of being silently skipped, so that broken themes fail
+// discovery rather than disappearing from installations.
 func discoverSourceThemes(srcRoot string) ([]string, error) {
-	dir := filepath.Join(srcRoot, "themes")
-	entries, err := os.ReadDir(dir)
-	if err != nil {
+	root := filepath.Join(srcRoot, "themes")
+	if err := ensureDirectory(root); err != nil {
 		return nil, fmt.Errorf("read source themes: %w", err)
 	}
 
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
+	hasRegularFile := func(dir string, name string) bool {
+		info, err := os.Stat(filepath.Join(dir, name))
+		return err == nil && info.Mode().IsRegular()
+	}
+
+	names := make([]string, 0)
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
-		if err := validateThemeName(e.Name()); err != nil {
-			return nil, fmt.Errorf("invalid theme directory name %q: %w", e.Name(), err)
+		if !d.IsDir() {
+			return nil
 		}
-		names = append(names, e.Name())
+
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		id := filepath.ToSlash(rel)
+
+		// Skip hidden directories such as .git; they can never be themes.
+		if rel != "." && strings.HasPrefix(d.Name(), ".") {
+			return fs.SkipDir
+		}
+
+		if rel != "." {
+			if err := validateThemeName(id); err != nil {
+				return fmt.Errorf("invalid theme directory %q: %w", id, err)
+			}
+		}
+
+		if hasRegularFile(path, "Main.qml") {
+			if rel == "." {
+				return errors.New("themes directory itself must not contain Main.qml")
+			}
+			names = append(names, id)
+			// A theme is a leaf: do not search inside it.
+			return fs.SkipDir
+		}
+
+		if hasRegularFile(path, "metadata.desktop") {
+			return fmt.Errorf("malformed theme directory %q: missing required Main.qml", id)
+		}
+
+		// Container/category directory: keep searching its children.
+		return nil
+	})
+	if walkErr != nil {
+		return nil, fmt.Errorf("read source themes: %w", walkErr)
 	}
 
 	if len(names) == 0 {
