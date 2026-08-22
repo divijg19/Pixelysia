@@ -109,6 +109,16 @@ jobs:
           file dist/pixelysia-linux-amd64 | grep -qiE 'x86-64|x86_64'
           file dist/pixelysia-linux-arm64 | grep -qi 'aarch64'
 
+      # Integrity metadata is generated from the exact final files being
+      # published (after chmod), then verified before the release is cut.
+      - name: Generate and Verify Checksums
+        run: |
+          cd dist
+          sha256sum pixelysia-linux-amd64 pixelysia-linux-arm64 pixelysia-payload.tar.gz > pixelysia-checksums.txt
+          cat pixelysia-checksums.txt
+          test "$(wc -l < pixelysia-checksums.txt)" -eq 3
+          sha256sum -c pixelysia-checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -116,4 +126,5 @@ jobs:
             dist/pixelysia-linux-amd64
             dist/pixelysia-linux-arm64
             dist/pixelysia-payload.tar.gz
+            dist/pixelysia-checksums.txt
           fail_on_unmatched_files: true

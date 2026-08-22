@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
-set -e
+# Strict mode applies when executed directly; when sourced by the offline
+# test harness it must not leak errexit into the caller.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+	set -e
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BIN_NAME="pixelysia"
@@ -61,34 +65,90 @@ resolve_repo() {
 	echo "divijg19/Pixelysia"
 }
 
-download_release_asset() {
-	local repo asset url output
+# Resolve the single release identity that this installation will consume.
+# Following the releases/latest redirect exactly once yields one immutable
+# tag; every asset is then fetched from that tag so a single installation
+# can never combine artifacts from different releases.
+resolve_release_tag() {
+	local repo url
 	repo="$1"
-	asset="$2"
-	output="$3"
-	url="https://github.com/$repo/releases/latest/download/$asset"
+
+	command -v curl > /dev/null 2>&1 || return 1
+	url="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$repo/releases/latest")" || return 1
+	url="${url##*/}"
+
+	printf '%s' "$url" | grep -Eq '^[A-Za-z0-9._-]+$' || return 1
+	printf '%s' "$url"
+}
+
+download_asset() {
+	local url output
+	url="$1"
+	output="$2"
 
 	command -v curl > /dev/null 2>&1 || return 1
 	curl -fsSL "$url" -o "$output"
 }
 
-download_release_binary() {
-	local repo platform output
-	repo="$1"
-	platform="$2"
-	output="$3"
+# Verify one downloaded file against its entry in a SHA256SUMS-style file.
+verify_file_hash() {
+	local sums file name expected
+	sums="$1"
+	file="$2"
+	name="$3"
 
-	if ! download_release_asset "$repo" "pixelysia-$platform" "$output"; then
+	expected="$(awk -v n="$name" '$2 == n { print $1 }' "$sums")"
+	if [ -z "$expected" ]; then
+		echo "Integrity metadata is missing an entry for $name" >&2
 		return 1
 	fi
-	chmod +x "$output"
+	if ! printf '%s  %s\n' "$expected" "$file" | sha256sum -c --status -; then
+		echo "$name failed SHA-256 verification; refusing to continue" >&2
+		return 1
+	fi
+}
+
+# Fail unless the checksum metadata covers exactly the three release assets.
+verify_checksum_metadata() {
+	local sums="$1"
+	if ! command -v sha256sum > /dev/null 2>&1; then
+		echo "sha256sum is required for release integrity verification" >&2
+		return 1
+	fi
+	for name in pixelysia-linux-amd64 pixelysia-linux-arm64 pixelysia-payload.tar.gz; do
+		grep -Eq '^[0-9a-f]{64}[[:space:]]+'"$name"'$' "$sums" || {
+			echo "Integrity metadata is incomplete: missing $name" >&2
+			return 1
+		}
+	done
+	return 0
+}
+
+build_local_binary() {
+	local output
+	output="$1"
+
+	if ! command -v go > /dev/null 2>&1; then
+		echo "Go is required for local fallback build" >&2
+		exit 1
+	fi
+
+	if ! is_valid_source_root "$SCRIPT_DIR"; then
+		echo "Local fallback build requires a Pixelysia repository checkout" >&2
+		exit 1
+	fi
+
+	(
+		cd "$SCRIPT_DIR"
+		CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$output" ./cmd/pixelysia
+	)
 }
 
 # Validate payload archive members before extraction. Only the four known
 # payload roots are accepted; anything else (absolute paths, ".." traversal,
 # unexpected extras) causes rejection regardless of local tar semantics.
 validate_payload_archive() {
-	local tarball list entry
+	local tarball entry
 	tarball="$1"
 	list="$(mktemp)"
 
@@ -117,87 +177,141 @@ validate_payload_archive() {
 }
 
 fetch_release_payload() {
-	local repo dest tmp_tar
+	local repo tag dest tmp_tar sums
 	repo="$1"
-	dest="$2"
+	tag="$2"
+	dest="$3"
 	tmp_tar="$(mktemp)"
+	sums="$(mktemp)"
 
-	if ! download_release_asset "$repo" "pixelysia-payload.tar.gz" "$tmp_tar"; then
-		rm -f "$tmp_tar"
+	base="${PIXELYSIA_RELEASE_BASE_URL:-https://github.com/$repo/releases/download}/$tag"
+
+	if ! download_asset "$base/pixelysia-checksums.txt" "$sums"; then
+		echo "Unable to download release integrity metadata." >&2
+		rm -f "$tmp_tar" "$sums"
 		return 1
 	fi
+	verify_checksum_metadata "$sums" || {
+		rm -f "$tmp_tar" "$sums"
+		return 1
+	}
+
+	if ! download_asset "$base/pixelysia-payload.tar.gz" "$tmp_tar"; then
+		echo "Unable to download the Pixelysia theme payload." >&2
+		rm -f "$tmp_tar" "$sums"
+		return 1
+	fi
+	verify_file_hash "$sums" "$tmp_tar" "pixelysia-payload.tar.gz" || {
+		rm -f "$tmp_tar" "$sums"
+		return 1
+	}
 
 	if ! validate_payload_archive "$tmp_tar"; then
 		echo "Release payload archive failed validation; refusing to extract." >&2
-		rm -f "$tmp_tar"
+		rm -f "$tmp_tar" "$sums"
 		return 1
 	fi
 
 	mkdir -p "$dest"
 	if ! tar -xzf "$tmp_tar" -C "$dest"; then
-		rm -f "$tmp_tar"
+		rm -f "$tmp_tar" "$sums"
 		rm -rf "$dest"
 		return 1
 	fi
-	rm -f "$tmp_tar"
+	rm -f "$tmp_tar" "$sums"
 
 	is_valid_source_root "$dest"
 }
 
-build_local_binary() {
-	local output
-	output="$1"
+fetch_verified_binary() {
+	local repo tag platform output sums
+	repo="$1"
+	tag="$2"
+	platform="$3"
+	output="$4"
+	sums="$(mktemp)"
 
-	if ! command -v go > /dev/null 2>&1; then
-		echo "Go is required for local fallback build" >&2
-		exit 1
-	fi
+	base="${PIXELYSIA_RELEASE_BASE_URL:-https://github.com/$repo/releases/download}/$tag"
 
-	if ! is_valid_source_root "$SCRIPT_DIR"; then
-		echo "Local fallback build requires a Pixelysia repository checkout" >&2
-		exit 1
-	fi
+	download_asset "$base/pixelysia-checksums.txt" "$sums" || {
+		rm -f "$sums"
+		return 1
+	}
+	verify_checksum_metadata "$sums" || {
+		rm -f "$sums"
+		return 1
+	}
+	download_asset "$base/pixelysia-$platform" "$output" || {
+		rm -f "$sums"
+		return 1
+	}
+	chmod +x "$output"
+	verify_file_hash "$sums" "$output" "pixelysia-$platform" || {
+		rm -f "$output" "$sums"
+		return 1
+	}
 
-	(
-		cd "$SCRIPT_DIR"
-		CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o "$output" ./cmd/pixelysia
-	)
+	rm -f "$sums"
+	return 0
 }
 
 main() {
-	local platform repo tmp_bin source_dir payload_dir
-	platform="$(detect_platform)"
+	local platform repo tmp_bin source_dir payload_dir tag bin_src
+	platform="$(detect_platform)" || exit 1
 	repo="$(resolve_repo)"
 	tmp_bin="$(mktemp)"
 	payload_dir=""
-	trap 'rm -f "$tmp_bin"; [ -n "$payload_dir" ] && rm -rf "$payload_dir"' EXIT
+	bin_src=""
+	trap 'rm -f "${tmp_bin:-}"; [ -n "${payload_dir:-}" ] && rm -rf "${payload_dir:-}"' EXIT
 
 	# Resolve an installation source before touching the system. A real
-	# repository checkout wins (development installs); otherwise the release
-	# payload archive is downloaded so that a clean machine can install
-	# without Go and without keeping the repository around.
+	# repository checkout wins (development installs); otherwise exactly one
+	# release identity is resolved and its binary, payload and integrity
+	# metadata are fetched together and verified before anything is installed.
 	if is_valid_source_root "$SCRIPT_DIR"; then
 		source_dir="$SCRIPT_DIR"
+
+		if tag="$(resolve_release_tag "$repo")" &&
+		   fetch_verified_binary "$repo" "$tag" "$platform" "$tmp_bin"; then
+			bin_src="$tmp_bin"
+		else
+			echo "Release download or verification failed; building locally..."
+			build_local_binary "$tmp_bin"
+			bin_src="$tmp_bin"
+		fi
 	else
+		if [ -n "${PIXELYSIA_RELEASE_TAG:-}" ]; then
+			tag="${PIXELYSIA_RELEASE_TAG:-}"
+		else
+			tag="$(resolve_release_tag "$repo")" || {
+				echo "Unable to determine the current Pixelysia release." >&2
+				exit 1
+			}
+		fi
+
 		payload_dir="$(mktemp -d)"
-		echo "Fetching Pixelysia theme payload..."
-		if ! fetch_release_payload "$repo" "$payload_dir"; then
-			echo "Unable to obtain Pixelysia runtime assets." >&2
-			echo "Run this script from a Pixelysia repository checkout, or check your network connection." >&2
+		echo "Fetching Pixelysia release $tag..."
+		fetch_release_payload "$repo" "$tag" "$payload_dir" || {
+			echo "Unable to obtain verified Pixelysia runtime assets; nothing was installed." >&2
+			exit 1
+		}
+		source_dir="$payload_dir"
+
+		if ! fetch_verified_binary "$repo" "$tag" "$platform" "$tmp_bin"; then
+			echo "Unable to obtain a verified pixelysia binary; nothing was installed." >&2
 			exit 1
 		fi
-		source_dir="$payload_dir"
+		bin_src="$tmp_bin"
 	fi
 
 	echo "Installing pixelysia CLI..."
-	if ! download_release_binary "$repo" "$platform" "$tmp_bin"; then
-		echo "Release download failed; building locally..."
-		build_local_binary "$tmp_bin"
-	fi
-
-	sudo install -m 0755 "$tmp_bin" "$INSTALL_PATH"
+	sudo install -m 0755 "$bin_src" "$INSTALL_PATH"
 	echo "Running system install..."
 	sudo PIXELYSIA_SOURCE_DIR="$source_dir" pixelysia install
 }
 
-main "$@"
+# Allow the offline installer test harness to source this script's
+# functions without executing an actual installation.
+if [ -z "${PIXELYSIA_SKIP_MAIN:-}" ]; then
+	main "$@"
+fi
