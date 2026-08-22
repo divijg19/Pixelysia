@@ -21,12 +21,13 @@ cd Pixelysia
 1. Detects Linux architecture (`amd64` or `arm64`)
 2. Resolves an installation source:
 	- If run from a Pixelysia repository checkout, that checkout is used directly.
-	- Otherwise the versioned `pixelysia-payload.tar.gz` release asset (QML dispatcher, themes, fonts) is downloaded and extracted to a temporary directory.
-3. Downloads the prebuilt binary from GitHub Releases (`pixelysia-linux-amd64` / `pixelysia-linux-arm64`) and falls back to a local build only when running inside a checkout and the download fails
-4. Installs to `/usr/local/bin/pixelysia`
-5. Runs `sudo PIXELYSIA_SOURCE_DIR=<resolved source> pixelysia install`
+	- Otherwise exactly one release is resolved (the `releases/latest` redirect is followed once to its immutable tag), and the binary, theme payload and integrity metadata for that same release are downloaded together.
+3. Verifies SHA-256 checksums (`pixelysia-checksums.txt`) against the exact bytes downloaded; any mismatch, truncation or missing metadata aborts before anything is installed
+4. Falls back to a local build only when running inside a checkout and the verified binary download fails
+5. Installs to `/usr/local/bin/pixelysia`
+6. Runs `sudo PIXELYSIA_SOURCE_DIR=<resolved source> pixelysia install`
 
-If neither a checkout nor the payload archive can be obtained, the script fails before installing anything.
+A single installation therefore always consumes one coherent release, and artifacts that fail integrity verification are never installed. Checksums establish integrity relative to the release they were generated from; they do not provide cryptographic authenticity/signing.
 
 ## Installed Paths
 
@@ -127,8 +128,8 @@ These tests do not write to real system paths.
 	- `go vet ./...` + `gofmt` check
 - Release workflow: `.github/workflows/release.yml`
 	- Trigger: tag push matching `v*`
-	- Builds static binaries (`CGO_ENABLED=0`) for `linux-amd64` and `linux-arm64`
-	- Publishes `pixelysia-linux-amd64`, `pixelysia-linux-arm64`, and `pixelysia-payload.tar.gz` as release assets
+	- Builds static binaries (`CGO_ENABLED=0`) for `linux-amd64` and `linux-arm64`; the runtime payload is built once in the release job from a single LFS checkout (no large Actions transport artifacts)
+	- Publishes `pixelysia-linux-amd64`, `pixelysia-linux-arm64`, `pixelysia-payload.tar.gz`, and `pixelysia-checksums.txt` as release assets
 
 ## Development Notes
 
