@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"syscall"
@@ -318,23 +317,15 @@ func checkFontCache() doctorCheck {
 }
 
 func checkThemesPresent() doctorCheck {
-	entries, err := os.ReadDir(sddmThemesDir)
+	names, err := collectInstalledThemes()
 	if err != nil {
 		return doctorCheck{Name: "themes present", OK: false, Detail: err.Error()}
-	}
-
-	names := make([]string, 0)
-	for _, e := range entries {
-		if e.IsDir() {
-			names = append(names, e.Name())
-		}
 	}
 
 	if len(names) == 0 {
 		return doctorCheck{Name: "themes present", OK: false, Detail: "no installed themes found"}
 	}
 
-	sort.Strings(names)
 	return doctorCheck{Name: "themes present", OK: true, Detail: strings.Join(names, ", ")}
 }
 

@@ -85,7 +85,15 @@ sudo pixelysia remove pixel-dusk-city
 
 # Run system diagnostics
 pixelysia doctor
+
+# Validate a theme source tree (read-only)
+pixelysia validate
+pixelysia validate --source /path/to/Pixelysia
 ```
+
+`validate` checks a Pixelysia source tree without touching the system: structural theme validity, `metadata.desktop` presence (advisory), declared `background=` assets resolve to real files, declared `font=` families are represented in each theme's QML usage, and every theme reference in the root dispatcher resolves. It exits non-zero on fatal findings and runs in CI against this repository.
+
+Font validation is textual/semantic within the theme source; it does not parse TTF name tables or prove that a runtime font engine will resolve the family.
 
 Theme identifiers are path-safe: traversal segments (`..`), absolute paths, and separators other than `/` are rejected.
 
@@ -115,6 +123,7 @@ These tests do not write to real system paths.
 - CI workflow: `.github/workflows/ci.yml`
 	- `go build ./...`
 	- `go test ./... -v`
+	- `pixelysia validate --source .` against the real theme tree
 	- `go vet ./...` + `gofmt` check
 - Release workflow: `.github/workflows/release.yml`
 	- Trigger: tag push matching `v*`

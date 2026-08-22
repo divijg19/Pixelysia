@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"path/filepath"
 )
 
 type CLI struct {
@@ -119,6 +120,41 @@ func (c *CLI) Run(args []string) int {
 		}
 		return 0
 
+	case "validate":
+		validateFlags := flag.NewFlagSet("validate", flag.ContinueOnError)
+		validateFlags.SetOutput(c.err)
+
+		source := validateFlags.String("source", "", "validate the theme source tree at DIR")
+
+		if err := validateFlags.Parse(args[1:]); err != nil {
+			c.printValidateUsage()
+			return 1
+		}
+
+		if validateFlags.NArg() != 0 {
+			fmt.Fprintln(c.err, "error: validate does not accept positional arguments")
+			c.printValidateUsage()
+			return 1
+		}
+
+		srcRoot := *source
+		if srcRoot == "" {
+			detected, err := detectSourceRoot()
+			if err != nil {
+				fmt.Fprintf(c.err, "error: %v\n", err)
+				return 1
+			}
+			srcRoot = detected
+		} else if abs, err := filepath.Abs(srcRoot); err == nil {
+			srcRoot = abs
+		}
+
+		if err := ValidateSource(srcRoot, c.out); err != nil {
+			fmt.Fprintf(c.err, "error: %v\n", err)
+			return 1
+		}
+		return 0
+
 	case "help", "-h", "--help":
 		c.printUsage()
 		return 0
@@ -138,10 +174,15 @@ func (c *CLI) printUsage() {
 	_, _ = fmt.Fprintln(c.out, "  pixelysia current")
 	_, _ = fmt.Fprintln(c.out, "  pixelysia remove <theme>")
 	_, _ = fmt.Fprintln(c.out, "  pixelysia doctor")
+	_, _ = fmt.Fprintln(c.out, "  pixelysia validate [--source <dir>]")
 }
 
 func (c *CLI) printInstallUsage() {
 	_, _ = fmt.Fprintln(c.out, "Usage: pixelysia install [--split | --theme <name>]")
+}
+
+func (c *CLI) printValidateUsage() {
+	_, _ = fmt.Fprintln(c.out, "Usage: pixelysia validate [--source <dir>]")
 }
 
 func requireNoMutuallyExclusive(split bool, theme string) error {

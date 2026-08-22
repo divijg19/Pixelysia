@@ -41,6 +41,9 @@ jobs:
       - name: Test
         run: go test ./... -v
 
+      - name: Validate Theme Sources
+        run: go run ./cmd/pixelysia validate --source .
+
   lint:
     runs-on: ubuntu-latest
     strategy:
