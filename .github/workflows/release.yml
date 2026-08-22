@@ -17,8 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v6
-        with:
-          lfs: true
 
       - name: Setup Go
         uses: actions/setup-go@v6
@@ -34,19 +32,15 @@ jobs:
             -o dist/pixelysia-linux-${{ matrix.goarch }} ./cmd/pixelysia
           chmod +x dist/pixelysia-linux-${{ matrix.goarch }}
 
-      - name: Build Payload Archive
+      - name: Smoke Test Binary
         if: matrix.goarch == 'amd64'
-        run: |
-          tar -czf dist/pixelysia-payload.tar.gz Main.qml metadata.desktop themes fonts
+        run: ./dist/pixelysia-linux-amd64 --help > /dev/null
 
-      - name: Smoke Test (amd64)
-        if: matrix.goarch == 'amd64'
+      - name: Verify Binary Artifact
         run: |
-          ./dist/pixelysia-linux-amd64 --help > /dev/null
-          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'Main.qml'
-          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'metadata.desktop'
-          tar -tzf dist/pixelysia-payload.tar.gz | grep -qx 'themes/tui/Amber/Main.qml'
-          tar -tzf dist/pixelysia-payload.tar.gz | grep -q 'fonts/.*\.ttf'
+          test -f dist/pixelysia-linux-${{ matrix.goarch }}
+          test -s dist/pixelysia-linux-${{ matrix.goarch }}
+          test -x dist/pixelysia-linux-${{ matrix.goarch }}
 
       - name: Upload Binary Artifact
         uses: actions/upload-artifact@v4
@@ -54,32 +48,66 @@ jobs:
           name: pixelysia-linux-${{ matrix.goarch }}
           path: dist/pixelysia-linux-${{ matrix.goarch }}
 
-      - name: Upload Payload Artifact
-        if: matrix.goarch == 'amd64'
-        uses: actions/upload-artifact@v4
-        with:
-          name: pixelysia-payload
-          path: dist/pixelysia-payload.tar.gz
-
+  # The release job owns the entire runtime payload production contract.
+  # This is the single place where Git LFS is hydrated for packaging, so no
+  # large payload ever transits Actions artifact storage.
   release:
     runs-on: ubuntu-latest
     needs: build
     permissions:
       contents: write
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          lfs: true
+
+      - name: Verify Source Tree
+        run: |
+          test -f Main.qml
+          test -f metadata.desktop
+          test -d themes
+          test -d fonts
+          test -f themes/tui/Amber/Main.qml
+
+      - name: Build Runtime Payload
+        run: |
+          mkdir -p dist
+          tar -czf dist/pixelysia-payload.tar.gz Main.qml metadata.desktop themes fonts
+
+      - name: Verify Runtime Payload
+        run: |
+          test -s dist/pixelysia-payload.tar.gz
+          listing="$(mktemp)"
+          trap 'rm -f "$listing"' EXIT
+          tar -tzf dist/pixelysia-payload.tar.gz > "$listing"
+          grep -qx 'Main.qml' "$listing"
+          grep -qx 'metadata.desktop' "$listing"
+          grep -qx 'themes/tui/Amber/Main.qml' "$listing"
+          grep -q 'fonts/.*\.ttf' "$listing"
+          # The archive must contain exactly the four payload roots.
+          awk -F/ '{print $1}' "$listing" | LC_ALL=C sort -u |
+            diff -u <(printf 'Main.qml\nfonts\nmetadata.desktop\nthemes\n') -
+
       - name: Download Built Binaries
         uses: actions/download-artifact@v4
         with:
-          pattern: pixelysia-*
+          pattern: pixelysia-linux-*
           merge-multiple: true
           path: dist
 
       - name: Verify Release Assets
         run: |
           test -f dist/pixelysia-linux-amd64
+          test -s dist/pixelysia-linux-amd64
           test -f dist/pixelysia-linux-arm64
-          test -f dist/pixelysia-payload.tar.gz
+          test -s dist/pixelysia-linux-arm64
+          test -s dist/pixelysia-payload.tar.gz
           chmod +x dist/pixelysia-linux-amd64 dist/pixelysia-linux-arm64
+          test -x dist/pixelysia-linux-amd64
+          test -x dist/pixelysia-linux-arm64
+          file dist/pixelysia-linux-amd64 | grep -qiE 'x86-64|x86_64'
+          file dist/pixelysia-linux-arm64 | grep -qi 'aarch64'
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
