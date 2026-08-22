@@ -62,7 +62,7 @@ Rectangle {
             width: unt.implicitWidth; height: unt.implicitHeight
             Text {
                 id: unt
-                text: (userModel.lastUser || "kamikuma").toUpperCase()
+                text: (userModel.lastUser || "").toUpperCase()
                 color: unm.containsMouse ? "white" : root.sunCream; font.family: "Pixelify Sans"; font.weight: Font.Bold; font.pixelSize: 22 * s; font.letterSpacing: 4 * s
                 layer.enabled: true; layer.effect: DropShadow { color: "#80000000"; radius: 4; samples: 8; horizontalOffset: 1; verticalOffset: 1 }
                 Behavior on color { ColorAnimation { duration: 150 } }

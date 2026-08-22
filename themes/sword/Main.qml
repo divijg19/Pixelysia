@@ -142,7 +142,7 @@ Rectangle {
         Text {
             id: userDisplay
             anchors.right: parent.right
-            text: userModel.lastUser || "kamikuma"
+            text: userModel.lastUser || ""
             color: "white"
             font.family: "Ninja Naruto"
             font.pixelSize: 22 * s

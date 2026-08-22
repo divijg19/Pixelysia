@@ -241,7 +241,7 @@ Rectangle {
                 parent: tuiName.slot
                 anchors.fill: parent
                 verticalAlignment: TextInput.AlignVCenter
-                    text: userModel.lastUser || "kamikuma"
+                    text: userModel.lastUser || ""
                 font.family: root.mono; font.pixelSize: 13 * s
                 color: root.green
                 cursorDelegate: TuiCursor {}

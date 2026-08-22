@@ -462,7 +462,7 @@ Rectangle {
 
                         // Username — centered in the box, consistent with bullet
                         Text {
-                            text: (userModel.lastUser || "kamikuma").toUpperCase()
+                            text: (userModel.lastUser || "").toUpperCase()
                             font.family: root.fontName; font.pixelSize: 14 * s
                             font.letterSpacing: 0.8
                             color: rowItem.sel || rowItem.hovered ? root.nierAccent : root.nierText

@@ -270,14 +270,21 @@ func TestReplaceDirAtomicRejectsFileTempPath(t *testing.T) {
 func TestValidateThemeName(t *testing.T) {
 	setupTestGlobals(t)
 
-	valid := []string{"alpha", "pixel-theme", "theme_name", "theme.name", "a1"}
+	valid := []string{
+		"alpha", "pixel-theme", "theme_name", "theme.name", "a1",
+		"tui/Amber", "a/b/c", "pixel-dusk-city",
+	}
 	for _, name := range valid {
 		if err := validateThemeName(name); err != nil {
 			t.Fatalf("expected valid name %q, got %v", name, err)
 		}
 	}
 
-	invalid := []string{"", "..", "../x", "bad/name", "white space", "*"}
+	invalid := []string{
+		"", "..", ".", "../x", "x/..", "a/../b",
+		"/abs", "/abs/path", "trailing/", "/leading",
+		"a//b", "bad\\name", "white space", "*", "tui/../forest",
+	}
 	for _, name := range invalid {
 		if err := validateThemeName(name); err == nil {
 			t.Fatalf("expected invalid name %q to fail", name)

@@ -184,7 +184,7 @@ Rectangle {
                 
                 Text {
                     text: {
-                        var name = userModel.lastUser || "kamikuma"
+                        var name = userModel.lastUser || ""
                         return name.toUpperCase()
                     }
                     font.family: "Figtree"; font.pixelSize: 18 * s

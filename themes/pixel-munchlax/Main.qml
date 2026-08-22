@@ -78,7 +78,7 @@ Rectangle {
                 Text { text: un.text; color: "#80000000"; font: un.font; x: 2*s; y: 2*s }
                 Text {
                     id: un
-                    text: (userModel.lastUser || "kamikuma").toUpperCase()
+                    text: (userModel.lastUser || "").toUpperCase()
                     color: root.mCream; font.family: "Pixelify Sans"; font.pixelSize: 22 * s; font.letterSpacing: 4 * s; font.weight: Font.Bold
                 }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if (userModel && userModel.rowCount() > 0) root.userIndex = (root.userIndex + 1) % userModel.rowCount() } }

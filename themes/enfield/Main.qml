@@ -223,7 +223,7 @@ Rectangle {
         // User Section
         Text {
             anchors.horizontalCenter: parent.horizontalCenter
-            text: userModel.lastUser || "kamikuma"
+            text: userModel.lastUser || ""
             color: root.mistWhite
             font.family: "Orbitron"
             font.pixelSize: 18 * s

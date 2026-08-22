@@ -162,12 +162,12 @@ Item {
                 anchors.fill: parent; anchors.leftMargin: 20 * s; spacing: 15 * s; visible: userMorpher.morphRatio < 0.99; opacity: 1.0 - userMorpher.morphRatio; scale: 1.0 - (userMorpher.morphRatio * 0.2)
                 Rectangle {
                     width: 45 * s; height: 45 * s; radius: 22.5 * s; color: root.accentColor; anchors.verticalCenter: parent.verticalCenter
-                    Text { anchors.centerIn: parent; text: (userModel.lastUser || "kamikuma")[0].toUpperCase(); font.pixelSize: 18 * s; font.weight: Font.Bold; color: "#0d1b0d" }
+                    Text { anchors.centerIn: parent; text: (userModel.lastUser || "?")[0].toUpperCase(); font.pixelSize: 18 * s; font.weight: Font.Bold; color: "#0d1b0d" }
                 }
                 Column {
                     anchors.verticalCenter: parent.verticalCenter
                     Text { text: "WELCOME BACK"; font.family: "Figtree"; font.pixelSize: 12 * s; color: "white"; opacity: 0.5; font.letterSpacing: 2 * s }
-                    Text { text: (userModel.lastUser || "kamikuma").toUpperCase(); font.family: "Figtree"; font.pixelSize: 22 * s; font.weight: Font.Bold; color: "white"; font.letterSpacing: 1 * s }
+                    Text { text: (userModel.lastUser || "").toUpperCase(); font.family: "Figtree"; font.pixelSize: 22 * s; font.weight: Font.Bold; color: "white"; font.letterSpacing: 1 * s }
                 }
             }
             Column {
