@@ -255,9 +255,10 @@ func RunDoctor(out io.Writer) error {
 	checks := make([]doctorCheck, 0, 5)
 
 	checks = append(checks, checkFontsInstalled())
-	checks = append(checks, checkFontCache())
+	checks = append(checks, checkFontDiscovery())
 	checks = append(checks, checkThemesPresent())
 	checks = append(checks, checkConfigExists())
+	checks = append(checks, checkCurrentTheme())
 	checks = append(checks, checkThemePermissions())
 
 	failed := false
@@ -306,14 +307,61 @@ func checkFontsInstalled() doctorCheck {
 	return doctorCheck{Name: "fonts installed", OK: true, Detail: fmt.Sprintf("%d font(s) found", count)}
 }
 
-func checkFontCache() doctorCheck {
-	cmd := commandRunner("fc-cache", "-f")
-	cmd.Stdout = io.Discard
-	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil {
-		return doctorCheck{Name: "font cache valid", OK: false, Detail: err.Error()}
+// checkFontDiscovery verifies, read-only, that fontconfig actually indexes
+// the installed Pixelysia fonts. Unlike a cache rebuild this never mutates
+// system state and is fast enough for routine diagnostics.
+func checkFontDiscovery() doctorCheck {
+	cmd := commandRunner("fc-list")
+	out, err := cmd.Output()
+	if err != nil {
+		return doctorCheck{Name: "fontconfig discovery", OK: false, Detail: err.Error()}
 	}
-	return doctorCheck{Name: "font cache valid", OK: true}
+
+	count := 0
+	for _, line := range strings.Split(string(out), "\n") {
+		if strings.HasPrefix(line, fontDir+string(os.PathSeparator)) {
+			count++
+		}
+	}
+	if count == 0 {
+		return doctorCheck{
+			Name:   "fontconfig discovery",
+			OK:     false,
+			Detail: fmt.Sprintf("no fonts discovered in %s; run fc-cache -f or reinstall fonts", fontDir),
+		}
+	}
+	return doctorCheck{Name: "fontconfig discovery", OK: true, Detail: fmt.Sprintf("%d font(s) discovered", count)}
+}
+
+// checkCurrentTheme reports whether the theme selected in the SDDM
+// configuration actually resolves to an installed theme. A configuration
+// left pointing at a removed theme is exactly the state SDDM cannot load,
+// so it must not be reported as healthy.
+func checkCurrentTheme() doctorCheck {
+	b, err := os.ReadFile(sddmConfigPath)
+	if err != nil {
+		return doctorCheck{Name: "current theme", OK: false, Detail: err.Error()}
+	}
+
+	current, ok := parseCurrentTheme(b)
+	if !ok || current == "" {
+		return doctorCheck{Name: "current theme", OK: false, Detail: "no current theme configured"}
+	}
+
+	installed, err := collectInstalledThemes()
+	if err != nil {
+		return doctorCheck{Name: "current theme", OK: false, Detail: err.Error()}
+	}
+	for _, name := range installed {
+		if name == current {
+			return doctorCheck{Name: "current theme", OK: true, Detail: current}
+		}
+	}
+	return doctorCheck{
+		Name:   "current theme",
+		OK:     false,
+		Detail: fmt.Sprintf("current theme %q is not installed", current),
+	}
 }
 
 func checkThemesPresent() doctorCheck {

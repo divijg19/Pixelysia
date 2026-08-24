@@ -255,5 +255,12 @@ func createFakeBin(t *testing.T) string {
 		t.Fatal(err)
 	}
 
+	// Read-only diagnostic shim: reports the sandbox fonts as indexed.
+	fcList := filepath.Join(binDir, "fc-list")
+	fcListScript := "#!/usr/bin/env sh\necho \"${PIXELYSIA_FONT_DIR:-/nonexistent}/Test.ttf: family\"\n"
+	if err := os.WriteFile(fcList, []byte(fcListScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	return binDir
 }

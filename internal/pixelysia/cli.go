@@ -100,7 +100,7 @@ func (c *CLI) Run(args []string) int {
 			return 1
 		}
 
-		if err := RemoveTheme(args[1]); err != nil {
+		if err := RemoveTheme(args[1], c.out); err != nil {
 			fmt.Fprintf(c.err, "error: %v\n", err)
 			return 1
 		}
@@ -155,6 +155,16 @@ func (c *CLI) Run(args []string) int {
 		}
 		return 0
 
+	case "version":
+		if len(args) != 1 {
+			fmt.Fprintln(c.err, "error: version does not accept arguments")
+			c.printUsage()
+			return 1
+		}
+
+		fmt.Fprintln(c.out, Version())
+		return 0
+
 	case "help", "-h", "--help":
 		c.printUsage()
 		return 0
@@ -175,6 +185,7 @@ func (c *CLI) printUsage() {
 	_, _ = fmt.Fprintln(c.out, "  pixelysia remove <theme>")
 	_, _ = fmt.Fprintln(c.out, "  pixelysia doctor")
 	_, _ = fmt.Fprintln(c.out, "  pixelysia validate [--source <dir>]")
+	_, _ = fmt.Fprintln(c.out, "  pixelysia version")
 }
 
 func (c *CLI) printInstallUsage() {
