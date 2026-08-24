@@ -706,3 +706,67 @@ func TestDiscoverRealRepositoryTree(t *testing.T) {
 		}
 	}
 }
+
+func TestRemoveWarnsWhenRemovingActiveTheme(t *testing.T) {
+	setupTestGlobals(t)
+
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	sddmConfigPath = filepath.Join(tmpRoot, "conf", "theme.conf")
+	if err := os.MkdirAll(filepath.Dir(sddmConfigPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sddmConfigPath, []byte("[Theme]\nCurrent=alpha\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := filepath.Join(sddmThemesDir, "alpha")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "Main.qml"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var out bytes.Buffer
+	if err := RemoveTheme("alpha", &out); err != nil {
+		t.Fatalf("remove failed: %v", err)
+	}
+	if !strings.Contains(out.String(), "Warning:") || !strings.Contains(out.String(), "alpha") {
+		t.Fatalf("expected active-theme warning, got: %q", out.String())
+	}
+	mustNotExist(t, dir)
+}
+
+func TestRemoveInactiveThemeStaysSilent(t *testing.T) {
+	setupTestGlobals(t)
+
+	tmpRoot := t.TempDir()
+	sddmThemesDir = filepath.Join(tmpRoot, "themes")
+	sddmConfigPath = filepath.Join(tmpRoot, "conf", "theme.conf")
+	if err := os.MkdirAll(filepath.Dir(sddmConfigPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(sddmConfigPath, []byte("[Theme]\nCurrent=other\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"other", "alpha"} {
+		dir := filepath.Join(sddmThemesDir, filepath.FromSlash(id))
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "Main.qml"), []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var out bytes.Buffer
+	if err := RemoveTheme("alpha", &out); err != nil {
+		t.Fatalf("remove failed: %v", err)
+	}
+	if strings.Contains(out.String(), "Warning") {
+		t.Fatalf("did not expect a warning for inactive theme, got: %q", out.String())
+	}
+	mustNotExist(t, filepath.Join(sddmThemesDir, "alpha"))
+}

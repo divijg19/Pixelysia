@@ -264,7 +264,11 @@ func ListThemes(out io.Writer) error {
 	return nil
 }
 
-func RemoveTheme(name string) error {
+// RemoveTheme deletes an installed theme. Removal is explicit and remains
+// allowed even for the currently selected SDDM theme; the caller is warned
+// through out when that is the case so the resulting dangling selection is
+// never a surprise. The subsequent doctor run will report it.
+func RemoveTheme(name string, out io.Writer) error {
 	if err := validateThemeName(name); err != nil {
 		return err
 	}
@@ -276,6 +280,12 @@ func RemoveTheme(name string) error {
 
 	if err := ensureDirectory(path); err != nil {
 		return fmt.Errorf("theme %q is not installed", name)
+	}
+
+	if b, readErr := os.ReadFile(sddmConfigPath); readErr == nil {
+		if current, ok := parseCurrentTheme(b); ok && current == name {
+			fmt.Fprintf(out, "Warning: %s is currently selected by SDDM and will be removed.\n", name)
+		}
 	}
 
 	if err := os.RemoveAll(path); err != nil {

@@ -222,3 +222,24 @@ func TestCLIValidateUsesDetectedSourceRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestCLIVersionCommand(t *testing.T) {
+	setupTestGlobals(t)
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	cli := NewCLI(&out, &errOut)
+
+	code := cli.Run([]string{"version"})
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d\nstderr=%s", code, errOut.String())
+	}
+	if strings.TrimSpace(out.String()) == "" {
+		t.Fatal("expected version output")
+	}
+
+	code = cli.Run([]string{"version", "extra"})
+	if code == 0 {
+		t.Fatal("expected non-zero exit for positional argument")
+	}
+}

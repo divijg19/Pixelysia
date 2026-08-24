@@ -28,7 +28,7 @@ jobs:
         run: |
           mkdir -p dist
           GOOS=linux GOARCH=${{ matrix.goarch }} CGO_ENABLED=0 \
-            go build -trimpath -ldflags "-s -w" \
+            go build -trimpath -ldflags "-s -w -X pixelysia/internal/pixelysia.version=${{ github.ref_name }}" \
             -o dist/pixelysia-linux-${{ matrix.goarch }} ./cmd/pixelysia
           chmod +x dist/pixelysia-linux-${{ matrix.goarch }}
 

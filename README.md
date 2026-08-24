@@ -90,13 +90,44 @@ pixelysia doctor
 # Validate a theme source tree (read-only)
 pixelysia validate
 pixelysia validate --source /path/to/Pixelysia
+
+# Show the version of the running binary
+pixelysia version
 ```
+Release binaries report their Git tag (injected at build time); locally built development binaries report `dev`.
 
 `validate` checks a Pixelysia source tree without touching the system: structural theme validity, `metadata.desktop` presence (advisory), declared `background=` assets resolve to real files, declared `font=` families are represented in each theme's QML usage, and every theme reference in the root dispatcher resolves. It exits non-zero on fatal findings and runs in CI against this repository.
 
 Font validation is textual/semantic within the theme source; it does not parse TTF name tables or prove that a runtime font engine will resolve the family.
 
 Theme identifiers are path-safe: traversal segments (`..`), absolute paths, and separators other than `/` are rejected.
+
+## Uninstall
+
+Remove an individual theme or the full bundle with `remove`; `doctor` and `list` always reflect the current state:
+
+```bash
+sudo pixelysia remove forest        # remove one split theme
+sudo pixelysia remove tui/Amber     # remove a nested theme
+sudo pixelysia remove pixelysia     # remove the full bundle
+```
+
+Removing the theme that SDDM currently selects prints a warning; SDDM then falls back to its embedded greeter until another theme is set. To fully uninstall Pixelysia, remove every listed theme, then:
+
+```bash
+sudo rm -rf /usr/share/fonts/pixelysia
+sudo rm /etc/sddm.conf.d/theme.conf
+sudo rm /usr/local/bin/pixelysia
+```
+
+## Troubleshooting
+
+Run `pixelysia doctor` first — it verifies fonts, fontconfig discovery, installed themes, configuration presence and whether the configured current theme actually resolves. Common situations:
+
+- **Theme does not appear / SDDM loads its default greeter** — the configured `Current=` names a theme that is not installed (for example after `remove`). Reinstall it (`pixelysia install --theme <id>`) or select another with `pixelysia set <id>`.
+- **`doctor` reports "current theme ... is not installed"** — same cause; the configuration is dangling until you `set` an installed theme.
+- **Fonts do not render** — check `doctor`: it reports both installed font files and whether fontconfig discovers them. If files exist but are not discovered, run `fc-cache -f` once.
+- **Release verification fails during install.sh** — the installer refuses unverified downloads by design. Re-run; if it persists, compare your download against the release's `pixelysia-checksums.txt`.
 
 ## Testing
 
@@ -141,5 +172,7 @@ These tests do not write to real system paths.
 ## License and Attribution
 
 Pixelysia is licensed under the GNU General Public License v3.0 (see [LICENSE](LICENSE)).
+
+Bundled fonts: [Figtree](https://fonts.google.com/specimen/Figtree), [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans), [Orbitron](https://fonts.google.com/specimen/Orbitron) and [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono) are distributed under the SIL Open Font License. The bundled Ninja Naruto fan font (`njnaruto.ttf`) originates from the upstream qylock distribution; its exact license could not be established from repository evidence — noted here rather than invented.
 
 The QML themes are derived from [Darkkal44/qylock](https://github.com/Darkkal44/qylock), with modifications for bundled system fonts and Pixelysia packaging. The TUI themes are original Pixelysia work. All upstream credit belongs to darkkal.
