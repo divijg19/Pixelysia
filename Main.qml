@@ -11,11 +11,14 @@ Loader {
     function pixelCore() {
         return random([
             "themes/pixel-coffee/Main.qml",
+            "themes/pixel-cyberpunk/Main.qml",
             "themes/pixel-dusk-city/Main.qml",
             "themes/pixel-emerald/Main.qml",
             "themes/pixel-night-city/Main.qml",
             "themes/pixel-rainyroom/Main.qml",
-            "themes/pixel-skyscrapers/Main.qml"
+            "themes/pixel-sakura/Main.qml",
+            "themes/pixel-skyscrapers/Main.qml",
+            "themes/pixel-waterfall/Main.qml"
         ])
     }
 
@@ -24,6 +27,18 @@ Loader {
         return random([
             "themes/pixel-hollowknight/Main.qml",
             "themes/pixel-munchlax/Main.qml"
+        ])
+    }
+
+    function scenic() {
+        return random([
+            "themes/winter/Main.qml",
+            "themes/dog-samurai/Main.qml",
+            "themes/field/Main.qml",
+            "themes/girl-coffee/Main.qml",
+            "themes/girl-pillow/Main.qml",
+            "themes/man-bicycle/Main.qml",
+            "themes/women-umbrella/Main.qml"
         ])
     }
 
@@ -59,6 +74,7 @@ Loader {
         "themes/star-rail/Main.qml",
         pixelCore(),
         pixelAlt(),   // 👈 rare pixel variant
+        scenic(), scenic(), scenic()
 
         // 🧠 TUI → 10% (2/20)
         tui(), tui()

@@ -50,6 +50,19 @@ Themes are discovered structurally: any directory under `themes/` that contains 
 
 Category directories without their own `Main.qml` (such as `themes/tui`) are containers only and are never installed as themes. A directory containing `metadata.desktop` but no `Main.qml` is rejected as malformed.
 
+### Catalog
+
+| Category | Themes |
+|---|---|
+| Pixel (video) | pixel-coffee, pixel-cyberpunk, pixel-dusk-city, pixel-emerald, pixel-hollowknight, pixel-munchlax, pixel-night-city, pixel-rainyroom, pixel-sakura, pixel-skyscrapers, pixel-waterfall |
+| Scenic / video | winter, dog-samurai |
+| Scenic / static image | field, girl-coffee, girl-pillow, man-bicycle, women-umbrella |
+| Specialized video | enfield, sword, star-rail, forest |
+| Game replica | nier-automata |
+| Terminal (TUI) | tui/Amber, tui/Amethyst, tui/Crimson, tui/Emerald, tui/Indigo |
+
+Pixelysia ships a curated selection derived from [Darkkal44/qylock](https://github.com/Darkkal44/qylock); it is intentionally not a full mirror of upstream. Font substitutions relative to upstream are made where licensing requires it and are noted per theme in each `theme.conf`.
+
 ## Requirements
 
 - Linux
@@ -173,6 +186,6 @@ These tests do not write to real system paths.
 
 Pixelysia is licensed under the GNU General Public License v3.0 (see [LICENSE](LICENSE)).
 
-Bundled fonts: [Figtree](https://fonts.google.com/specimen/Figtree), [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans), [Orbitron](https://fonts.google.com/specimen/Orbitron) and [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono) are distributed under the SIL Open Font License. The bundled Ninja Naruto fan font (`njnaruto.ttf`) originates from the upstream qylock distribution; its exact license could not be established from repository evidence — noted here rather than invented.
+Bundled fonts: [Figtree](https://fonts.google.com/specimen/Figtree), [Pixelify Sans](https://fonts.google.com/specimen/Pixelify+Sans), [Orbitron](https://fonts.google.com/specimen/Orbitron) and [Share Tech Mono](https://fonts.google.com/specimen/Share+Tech+Mono) are distributed under the SIL Open Font License. [Itim](https://fonts.google.com/specimen/Itim) (bundled for the static-image scenic themes) is distributed under the SIL Open Font License. The bundled Ninja Naruto fan font (`njnaruto.ttf`) originates from the upstream qylock distribution; its exact license could not be established from repository evidence — noted here rather than invented.
 
 The QML themes are derived from [Darkkal44/qylock](https://github.com/Darkkal44/qylock), with modifications for bundled system fonts and Pixelysia packaging. The TUI themes are original Pixelysia work. All upstream credit belongs to darkkal.

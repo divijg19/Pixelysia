@@ -214,7 +214,7 @@ func TestValidateRealRepository(t *testing.T) {
 	if err := ValidateSource(repoRoot, &out); err != nil {
 		t.Fatalf("real repository failed validation: %v\n%s", err, out.String())
 	}
-	if !strings.Contains(out.String(), "18 ok") {
-		t.Fatalf("expected all 18 repository themes to validate, got:\n%s", out.String())
+	if !strings.Contains(out.String(), "28 ok") {
+		t.Fatalf("expected all 28 repository themes to validate, got:\n%s", out.String())
 	}
 }
