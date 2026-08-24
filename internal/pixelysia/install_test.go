@@ -688,12 +688,14 @@ func TestDiscoverRealRepositoryTree(t *testing.T) {
 	}
 
 	expected := []string{
-		"enfield", "forest", "nier-automata",
-		"pixel-coffee", "pixel-dusk-city", "pixel-emerald",
+		"dog-samurai", "enfield", "field", "forest", "girl-coffee",
+		"girl-pillow", "man-bicycle", "nier-automata",
+		"pixel-coffee", "pixel-cyberpunk", "pixel-dusk-city", "pixel-emerald",
 		"pixel-hollowknight", "pixel-munchlax", "pixel-night-city",
-		"pixel-rainyroom", "pixel-skyscrapers",
+		"pixel-rainyroom", "pixel-sakura", "pixel-skyscrapers", "pixel-waterfall",
 		"star-rail", "sword",
 		"tui/Amber", "tui/Amethyst", "tui/Crimson", "tui/Emerald", "tui/Indigo",
+		"winter", "women-umbrella",
 	}
 	if strings.Join(names, ",") != strings.Join(expected, ",") {
 		t.Fatalf("expected repository themes:\n%v\ngot:\n%v", expected, names)
