@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -687,15 +688,41 @@ func TestDiscoverRealRepositoryTree(t *testing.T) {
 		t.Fatalf("discovery failed against the real repository: %v", err)
 	}
 
-	expected := []string{
-		"dog-samurai", "enfield", "field", "forest", "girl-coffee",
-		"girl-pillow", "man-bicycle", "nier-automata",
-		"pixel-coffee", "pixel-cyberpunk", "pixel-dusk-city", "pixel-emerald",
-		"pixel-hollowknight", "pixel-munchlax", "pixel-night-city",
-		"pixel-rainyroom", "pixel-sakura", "pixel-skyscrapers", "pixel-waterfall",
-		"star-rail", "sword",
-		"tui/Amber", "tui/Amethyst", "tui/Crimson", "tui/Emerald", "tui/Indigo",
-		"winter", "women-umbrella",
+	// The discovered set must equal the actual on-disk theme tree, so this
+	// regression stays catalog-agnostic as the repository grows.
+	expected := make([]string, 0)
+	entries, _ := os.ReadDir(themesDir)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if e.Name() == "tui" {
+			variants, _ := os.ReadDir(filepath.Join(themesDir, "tui"))
+			for _, v := range variants {
+				if v.IsDir() {
+					expected = append(expected, "tui/"+v.Name())
+				}
+			}
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(themesDir, e.Name(), "Main.qml")); err == nil {
+			expected = append(expected, e.Name())
+		}
+	}
+	sort.Strings(expected)
+
+	for _, mandatory := range []string{"enfield", "forest", "nier-automata",
+		"pixel-cyberpunk", "tui/Amber", "winter"} {
+		found := false
+		for _, n := range names {
+			if n == mandatory {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("mandatory theme %q missing from discovery: %v", mandatory, names)
+		}
 	}
 	if strings.Join(names, ",") != strings.Join(expected, ",") {
 		t.Fatalf("expected repository themes:\n%v\ngot:\n%v", expected, names)

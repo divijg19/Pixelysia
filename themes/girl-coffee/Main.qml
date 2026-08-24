@@ -1,5 +1,5 @@
-import Qt5Compat.GraphicalEffects
 import QtQuick
+import Qt5Compat.GraphicalEffects
 import QtQuick.Window
 import SddmComponents 2.0
 
